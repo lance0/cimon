@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"os"
+	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -8,7 +11,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lance0/cimon/internal/config"
 	"github.com/lance0/cimon/internal/gh"
-	"github.com/pkg/browser"
 )
 
 // State represents the current state of the TUI
@@ -264,7 +266,22 @@ func (m Model) ExitCode() int {
 	return m.exitCode
 }
 
-// openURL opens a URL in the default browser
+// openURL opens a URL in the default browser silently (no stderr output)
 var openURL = func(url string) {
-	_ = browser.OpenURL(url)
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	// Suppress all output - we don't want to pollute the TUI
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Stdin = nil
+	// Detach from terminal
+	cmd.Env = os.Environ()
+	_ = cmd.Start()
 }
