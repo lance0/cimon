@@ -17,20 +17,20 @@ const (
 
 // Colors
 var (
-	ColorGreen  = lipgloss.Color("2")   // Green
-	ColorRed    = lipgloss.Color("1")   // Red
-	ColorYellow = lipgloss.Color("3")   // Yellow
-	ColorDim    = lipgloss.Color("8")   // Dim gray
-	ColorWhite  = lipgloss.Color("15")  // White
-	ColorCyan   = lipgloss.Color("6")   // Cyan
+	ColorGreen  = lipgloss.Color("2")  // Green
+	ColorRed    = lipgloss.Color("1")  // Red
+	ColorYellow = lipgloss.Color("3")  // Yellow
+	ColorDim    = lipgloss.Color("8")  // Dim gray
+	ColorWhite  = lipgloss.Color("15") // White
+	ColorCyan   = lipgloss.Color("6")  // Cyan
 )
 
 // Styles holds all the lipgloss styles used in the TUI
 type Styles struct {
 	// Header styles
-	RepoName    lipgloss.Style
-	Branch      lipgloss.Style
-	Separator   lipgloss.Style
+	RepoName  lipgloss.Style
+	Branch    lipgloss.Style
+	Separator lipgloss.Style
 
 	// Status badge styles
 	StatusSuccess    lipgloss.Style
@@ -39,9 +39,9 @@ type Styles struct {
 	StatusQueued     lipgloss.Style
 
 	// Job table styles
-	JobName       lipgloss.Style
-	JobDuration   lipgloss.Style
-	JobTimeAgo    lipgloss.Style
+	JobName     lipgloss.Style
+	JobDuration lipgloss.Style
+	JobTimeAgo  lipgloss.Style
 
 	// Icon styles
 	IconSuccess    lipgloss.Style
@@ -51,13 +51,13 @@ type Styles struct {
 	IconSkipped    lipgloss.Style
 
 	// Footer styles
-	HelpKey   lipgloss.Style
-	HelpDesc  lipgloss.Style
+	HelpKey  lipgloss.Style
+	HelpDesc lipgloss.Style
 
 	// General
-	Dim       lipgloss.Style
-	Bold      lipgloss.Style
-	Selected  lipgloss.Style
+	Dim      lipgloss.Style
+	Bold     lipgloss.Style
+	Selected lipgloss.Style
 
 	// Error
 	Error     lipgloss.Style
@@ -68,7 +68,50 @@ type Styles struct {
 }
 
 // DefaultStyles returns the default style set
-func DefaultStyles() *Styles {
+func DefaultStyles(colorEnabled bool) *Styles {
+	if !colorEnabled {
+		return &Styles{
+			// Header
+			RepoName:  lipgloss.NewStyle().Bold(true),
+			Branch:    lipgloss.NewStyle(),
+			Separator: lipgloss.NewStyle(),
+
+			// Status badges
+			StatusSuccess:    lipgloss.NewStyle().Bold(true),
+			StatusFailure:    lipgloss.NewStyle().Bold(true),
+			StatusInProgress: lipgloss.NewStyle().Bold(true),
+			StatusQueued:     lipgloss.NewStyle(),
+
+			// Job table
+			JobName:     lipgloss.NewStyle(),
+			JobDuration: lipgloss.NewStyle(),
+			JobTimeAgo:  lipgloss.NewStyle(),
+
+			// Icons
+			IconSuccess:    lipgloss.NewStyle(),
+			IconFailure:    lipgloss.NewStyle(),
+			IconInProgress: lipgloss.NewStyle(),
+			IconQueued:     lipgloss.NewStyle(),
+			IconSkipped:    lipgloss.NewStyle(),
+
+			// Footer
+			HelpKey:  lipgloss.NewStyle(),
+			HelpDesc: lipgloss.NewStyle(),
+
+			// General
+			Dim:      lipgloss.NewStyle(),
+			Bold:     lipgloss.NewStyle().Bold(true),
+			Selected: lipgloss.NewStyle(),
+
+			// Error
+			Error:     lipgloss.NewStyle(),
+			ErrorHint: lipgloss.NewStyle(),
+
+			// Watch
+			Watching: lipgloss.NewStyle(),
+		}
+	}
+
 	return &Styles{
 		// Header
 		RepoName:  lipgloss.NewStyle().Bold(true).Foreground(ColorWhite),

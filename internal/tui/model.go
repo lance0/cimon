@@ -88,13 +88,16 @@ func NewModel(cfg *config.Config, client *gh.Client) Model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 
+	// Colors are enabled unless NO_COLOR is set or --no-color flag is used
+	colorEnabled := os.Getenv("NO_COLOR") == "" && !cfg.NoColor
+
 	return Model{
-		config:  cfg,
-		client:  client,
-		state:   StateLoading,
-		styles:  DefaultStyles(),
-		keys:    DefaultKeyMap(),
-		spinner: s,
+		config:   cfg,
+		client:   client,
+		state:    StateLoading,
+		styles:   DefaultStyles(colorEnabled),
+		keys:     DefaultKeyMap(),
+		spinner:  s,
 		watching: cfg.Watch,
 	}
 }

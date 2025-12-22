@@ -4,17 +4,17 @@ import "time"
 
 // WorkflowRun represents a GitHub Actions workflow run
 type WorkflowRun struct {
-	ID         int64      `json:"id"`
-	Name       string     `json:"name"`
-	RunNumber  int        `json:"run_number"`
-	Status     string     `json:"status"`      // queued, in_progress, completed
-	Conclusion *string    `json:"conclusion"`  // success, failure, cancelled, skipped, timed_out, action_required
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	HTMLURL    string     `json:"html_url"`
-	Event      string     `json:"event"`       // push, pull_request, workflow_dispatch, etc.
-	HeadBranch string     `json:"head_branch"`
-	Actor      *User      `json:"actor"`
+	ID         int64     `json:"id"`
+	Name       string    `json:"name"`
+	RunNumber  int       `json:"run_number"`
+	Status     string    `json:"status"`     // queued, in_progress, completed
+	Conclusion *string   `json:"conclusion"` // success, failure, cancelled, skipped, timed_out, action_required
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	HTMLURL    string    `json:"html_url"`
+	Event      string    `json:"event"` // push, pull_request, workflow_dispatch, etc.
+	HeadBranch string    `json:"head_branch"`
+	Actor      *User     `json:"actor"`
 }
 
 // User represents a GitHub user
@@ -44,6 +44,13 @@ type WorkflowRunsResponse struct {
 type JobsResponse struct {
 	TotalCount int   `json:"total_count"`
 	Jobs       []Job `json:"jobs"`
+}
+
+// Repository represents a GitHub repository
+type Repository struct {
+	Name          string `json:"name"`
+	FullName      string `json:"full_name"`
+	DefaultBranch string `json:"default_branch"`
 }
 
 // RunStatus constants

@@ -12,10 +12,10 @@
 
 ## v0.1 - Scripting Support
 
-- [ ] `--plain` text output (no TUI)
-- [ ] `--json` output for scripting
-- [ ] Better detached HEAD behavior via default branch lookup
-- [ ] NO_COLOR environment variable support
+- [x] `--plain` text output (no TUI)
+- [x] `--json` output for scripting
+- [x] Better detached HEAD behavior via default branch lookup
+- [x] NO_COLOR environment variable support
 
 ## v0.2 - Job Details
 

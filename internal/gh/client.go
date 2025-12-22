@@ -3,6 +3,7 @@ package gh
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -42,6 +43,21 @@ func (c *Client) Get(path string, response interface{}) error {
 		return c.wrapError(err)
 	}
 	return nil
+}
+
+// GetRepository fetches repository information from GitHub API
+func (c *Client) GetRepository(owner, repo string) (*Repository, error) {
+	path := fmt.Sprintf("repos/%s/%s",
+		url.PathEscape(owner),
+		url.PathEscape(repo),
+	)
+
+	var repository Repository
+	if err := c.Get(path, &repository); err != nil {
+		return nil, err
+	}
+
+	return &repository, nil
 }
 
 // wrapError converts API errors to our custom error types

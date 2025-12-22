@@ -16,14 +16,15 @@ var ErrHelp = pflag.ErrHelp
 
 // Config holds all runtime configuration for cimon
 type Config struct {
-	Owner    string
-	Repo     string
-	Branch   string
-	Watch    bool
-	Poll     time.Duration
-	NoColor  bool
-	Plain    bool
-	Version  bool
+	Owner   string
+	Repo    string
+	Branch  string
+	Watch   bool
+	Poll    time.Duration
+	NoColor bool
+	Plain   bool
+	Json    bool
+	Version bool
 }
 
 // Default values
@@ -37,6 +38,9 @@ var (
 
 	// ErrNoBranch is returned when branch cannot be determined
 	ErrNoBranch = errors.New("could not determine branch")
+
+	// ErrDetachedHead is returned when in detached HEAD state
+	ErrDetachedHead = errors.New("detached HEAD - will use default branch")
 )
 
 // Parse parses command-line flags and resolves configuration.
@@ -53,6 +57,7 @@ func Parse(args []string) (*Config, error) {
 	fs.DurationVarP(&cfg.Poll, "poll", "p", DefaultPollInterval, "Poll interval for watch mode")
 	fs.BoolVar(&cfg.NoColor, "no-color", false, "Disable color output")
 	fs.BoolVar(&cfg.Plain, "plain", false, "Plain text output (no TUI)")
+	fs.BoolVar(&cfg.Json, "json", false, "JSON output for scripting")
 	fs.BoolVarP(&cfg.Version, "version", "v", false, "Show version")
 
 	if err := fs.Parse(args); err != nil {
@@ -95,6 +100,10 @@ func (c *Config) Resolve() error {
 	if c.Branch == "" {
 		branch, err := git.GetBranch(cwd)
 		if err != nil {
+			// If in detached HEAD state, we'll handle it after client creation
+			if err == git.ErrDetachedHead {
+				return ErrDetachedHead
+			}
 			return fmt.Errorf("%w: %v", ErrNoBranch, err)
 		}
 		c.Branch = branch

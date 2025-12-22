@@ -57,7 +57,9 @@ cimon --repo owner/name --branch main
 -r, --repo string     Repository in owner/name format
 -w, --watch           Watch mode - poll until completion
 -p, --poll duration   Poll interval for watch mode (default 5s)
+    --json            JSON output for scripting
     --no-color        Disable color output
+    --plain           Plain text output (no TUI)
 -v, --version         Show version
 ```
 
@@ -84,6 +86,10 @@ gh auth login
 export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
 ```
 
+## Environment Variables
+
+- **NO_COLOR** - Disable colored output in TUI mode (equivalent to `--no-color` flag)
+
 ## Examples
 
 ```bash
@@ -95,6 +101,12 @@ cimon -w
 
 # Check CI on main branch
 cimon -b main
+
+# Get plain text output for scripting
+cimon --plain
+
+# Get JSON output for automation/scripting
+cimon --json
 
 # Monitor a different repo
 cimon -r octocat/hello-world -b main
