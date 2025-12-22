@@ -38,7 +38,7 @@
 ## v0.5 - Enhanced UX
 
 - [x] Workflow history with pagination (beyond just latest run)
-- [ ] Branch filtering and selection
+- [x] Branch filtering and selection
 - [ ] Better error handling with retry logic
 - [ ] Loading states and progress indicators
 - [ ] Keyboard shortcuts help dialog (?)

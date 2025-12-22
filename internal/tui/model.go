@@ -25,6 +25,7 @@ const (
 	StateError
 	StateJobDetails
 	StateLogViewer
+	StateBranchSelection
 )
 
 // Model is the Bubble Tea model for the TUI
@@ -39,12 +40,14 @@ type Model struct {
 	state State
 
 	// Data
-	runs []gh.WorkflowRun // All workflow runs (for history)
-	run  *gh.WorkflowRun  // Currently selected run
-	jobs []gh.Job
+	runs     []gh.WorkflowRun // All workflow runs (for history)
+	run      *gh.WorkflowRun  // Currently selected run
+	jobs     []gh.Job
+	branches []gh.Branch // All available branches
 
 	// Navigation state
-	selectedRunIndex int // Index of currently selected run in runs slice
+	selectedRunIndex    int // Index of currently selected run in runs slice
+	selectedBranchIndex int // Index of currently selected branch in branch selection
 
 	// Job details state
 	showingJobDetails bool
@@ -117,6 +120,11 @@ type RunsLoadedMsg struct {
 	Runs []gh.WorkflowRun
 }
 
+// BranchesLoadedMsg is sent when branches are loaded
+type BranchesLoadedMsg struct {
+	Branches []gh.Branch
+}
+
 // ErrMsg is sent when an error occurs
 type ErrMsg struct {
 	Err error
@@ -179,6 +187,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.fetchJobs()
 		}
 		m.state = StateReady
+		return m, nil
+
+	case BranchesLoadedMsg:
+		m.branches = msg.Branches
+		m.state = StateBranchSelection
 		return m, nil
 
 	case RunLoadedMsg:
@@ -278,6 +291,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.logScrollOffset > 0 {
 				m.logScrollOffset--
 			}
+		} else if m.state == StateBranchSelection {
+			// Navigate branches up
+			if m.selectedBranchIndex > 0 {
+				m.selectedBranchIndex--
+			}
 		} else {
 			if m.cursor > 0 {
 				m.cursor--
@@ -292,6 +310,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			maxScroll := len(lines) - (m.height - 8) // Approximate visible lines
 			if maxScroll > 0 && m.logScrollOffset < maxScroll {
 				m.logScrollOffset++
+			}
+		} else if m.state == StateBranchSelection {
+			// Navigate branches down
+			if m.selectedBranchIndex < len(m.branches)-1 {
+				m.selectedBranchIndex++
 			}
 		} else if m.showingJobDetails {
 			if m.selectedJob != nil && m.jobDetailsCursor < len(m.selectedJob.Steps)-1 {
@@ -404,6 +427,18 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	case key.Matches(msg, m.keys.BranchSelect):
+		if m.state == StateReady && !m.showingJobDetails && !m.showingLogs {
+			// Enter branch selection mode
+			m.selectedBranchIndex = 0 // Start with first branch
+			return m, m.fetchBranches()
+		} else if m.state == StateBranchSelection {
+			// Exit branch selection mode (don't change branch)
+			m.state = StateReady
+			return m, nil
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -423,6 +458,17 @@ func (m Model) fetchWorkflowRuns() tea.Cmd {
 		}
 
 		return RunsLoadedMsg{Runs: runs}
+	}
+}
+
+func (m Model) fetchBranches() tea.Cmd {
+	return func() tea.Msg {
+		branches, err := m.client.FetchBranches(m.config.Owner, m.config.Repo)
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+
+		return BranchesLoadedMsg{Branches: branches}
 	}
 }
 

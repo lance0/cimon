@@ -19,6 +19,8 @@ func (m Model) View() string {
 		return m.viewJobDetails()
 	case StateLogViewer:
 		return m.viewLogViewer()
+	case StateBranchSelection:
+		return m.viewBranchSelection()
 	default:
 		return m.viewReady()
 	}
@@ -199,7 +201,10 @@ func (m Model) viewFooter() string {
 	b.WriteString("  ")
 
 	var bindings []key.Binding
-	if m.state == StateLogViewer {
+	if m.state == StateBranchSelection {
+		// In branch selection, show navigation and selection options
+		bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.Enter, m.keys.BranchSelect, m.keys.Quit}
+	} else if m.state == StateLogViewer {
 		// In log viewer, show navigation and exit options
 		if m.logSearchTerm != "" && len(m.logSearchMatches) > 0 {
 			bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.NextMatch, m.keys.PrevMatch, m.keys.Logs, m.keys.Quit}
@@ -208,15 +213,15 @@ func (m Model) viewFooter() string {
 		}
 	} else if len(m.jobs) > 0 && !m.showingJobDetails && len(m.runs) > 1 {
 		// Show run navigation, Enter and Logs keys when multiple runs available
-		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.PrevRun, m.keys.NextRun, m.keys.Enter, m.keys.Logs, m.keys.Quit}
+		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.PrevRun, m.keys.NextRun, m.keys.BranchSelect, m.keys.Enter, m.keys.Logs, m.keys.Quit}
 	} else if len(m.jobs) > 0 && !m.showingJobDetails {
 		// Show Enter and Logs keys when jobs are available and not in details mode
-		bindings = m.keys.ShortHelpWithLogs()
+		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.BranchSelect, m.keys.Enter, m.keys.Logs, m.keys.Quit}
 	} else if m.showingJobDetails {
 		// Show Enter and Logs keys in job details mode
 		bindings = []key.Binding{m.keys.Refresh, m.keys.Open, m.keys.Logs, m.keys.Enter, m.keys.Quit}
 	} else {
-		bindings = m.keys.ShortHelp()
+		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.BranchSelect, m.keys.Quit}
 	}
 
 	for i, binding := range bindings {
@@ -422,6 +427,44 @@ func (m Model) viewJobDetailsPanel(width int) string {
 	} else {
 		b.WriteString("  No steps available\n")
 	}
+
+	return b.String()
+}
+
+func (m Model) viewBranchSelection() string {
+	var b strings.Builder
+
+	b.WriteString("Select Branch\n\n")
+
+	if len(m.branches) == 0 {
+		b.WriteString("Loading branches...")
+	} else {
+		for i, branch := range m.branches {
+			if i == m.selectedBranchIndex {
+				b.WriteString(m.styles.Selected.Render("→ "))
+			} else {
+				b.WriteString("  ")
+			}
+
+			// Show branch name
+			if branch.Name == m.config.Branch {
+				b.WriteString(m.styles.StatusSuccess.Render(branch.Name))
+				b.WriteString(" (current)")
+			} else {
+				b.WriteString(branch.Name)
+			}
+
+			// Show protection status
+			if branch.Protected {
+				b.WriteString(" 🔒")
+			}
+
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.viewFooter())
 
 	return b.String()
 }
