@@ -597,6 +597,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.selectedSourcedRun > 0 {
 				m.selectedSourcedRun--
 			}
+		} else if m.showingJobDetails {
+			// Navigate job steps up
+			if m.jobDetailsCursor > 0 {
+				m.jobDetailsCursor--
+			}
 		} else {
 			if m.cursor > 0 {
 				m.cursor--
