@@ -1,6 +1,8 @@
 package gh
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -39,6 +41,22 @@ func NewClient() (*Client, error) {
 // Get performs a GET request to the GitHub API
 func (c *Client) Get(path string, response interface{}) error {
 	err := c.rest.Get(path, response)
+	if err != nil {
+		return c.wrapError(err)
+	}
+	return nil
+}
+
+// Post performs a POST request to the GitHub API
+func (c *Client) Post(path string, payload interface{}) error {
+	var body bytes.Buffer
+	if payload != nil {
+		if err := json.NewEncoder(&body).Encode(payload); err != nil {
+			return fmt.Errorf("failed to encode payload: %w", err)
+		}
+	}
+
+	err := c.rest.Post(path, &body, nil)
 	if err != nil {
 		return c.wrapError(err)
 	}

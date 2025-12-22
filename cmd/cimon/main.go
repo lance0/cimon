@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,6 +12,7 @@ import (
 	"github.com/lance0/cimon/internal/gh"
 	"github.com/lance0/cimon/internal/git"
 	"github.com/lance0/cimon/internal/tui"
+	"github.com/spf13/pflag"
 )
 
 // Build variables (set by goreleaser)
@@ -25,8 +27,25 @@ func main() {
 }
 
 func run() int {
-	// Parse CLI flags
-	cfg, err := config.Parse(os.Args[1:])
+	args := os.Args[1:]
+
+	// Check for subcommands
+	if len(args) > 0 {
+		switch args[0] {
+		case "retry":
+			return runRetry(args[1:])
+		case "cancel":
+			return runCancel(args[1:])
+		case "dispatch":
+			return runDispatch(args[1:])
+		case "help", "-h", "--help":
+			printUsage()
+			return 0
+		}
+	}
+
+	// Parse CLI flags for TUI mode
+	cfg, err := config.Parse(args)
 	if err != nil {
 		if err == config.ErrHelp {
 			return 0
@@ -250,6 +269,224 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%.1fm", d.Minutes())
 	}
 	return fmt.Sprintf("%.1fh", d.Hours())
+}
+
+func printUsage() {
+	fmt.Printf(`cimon - Terminal-first CI monitor for GitHub Actions
+
+USAGE:
+    cimon [flags]                    Monitor CI status (interactive)
+    cimon retry [flags]              Rerun the latest workflow
+    cimon cancel [flags]             Cancel a running workflow
+    cimon dispatch <workflow> [flags] Trigger workflow dispatch
+
+FLAGS:
+    -r, --repo string     Repository in owner/name format
+    -b, --branch string   Branch name
+    -w, --watch           Watch mode - poll until completion
+    -p, --poll duration   Poll interval for watch mode (default 5s)
+        --no-color        Disable color output
+        --plain           Plain text output (no TUI)
+        --json            JSON output for scripting
+    -v, --version         Show version
+
+EXAMPLES:
+    cimon                           # Monitor current repo
+    cimon --plain                   # Plain text output
+    cimon retry                     # Rerun latest workflow
+    cimon cancel                    # Cancel running workflow
+    cimon dispatch deploy.yml       # Trigger workflow dispatch
+
+For more information, see: https://github.com/lance0/cimon
+`)
+}
+
+func runRetry(args []string) int {
+	// Parse flags for retry command
+	cfg, err := parseSubcommandFlags(args, "retry")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 2
+	}
+
+	// Resolve repo and branch
+	if err := cfg.Resolve(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 2
+	}
+
+	// Create client
+	client, err := gh.NewClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 2
+	}
+
+	// Get latest run
+	run, err := client.FetchLatestRun(cfg.Owner, cfg.Repo, cfg.Branch)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching latest run: %v\n", err)
+		return 2
+	}
+
+	if run == nil {
+		fmt.Fprintf(os.Stderr, "No workflow runs found for %s/%s on branch %s\n", cfg.Owner, cfg.Repo, cfg.Branch)
+		return 2
+	}
+
+	// Confirm rerun
+	fmt.Printf("Rerun workflow #%d (%s) on %s/%s?\n", run.RunNumber, run.Name, cfg.Owner, cfg.Repo)
+	if !getConfirmation() {
+		fmt.Println("Cancelled.")
+		return 0
+	}
+
+	// Rerun the workflow
+	err = client.RerunWorkflow(cfg.Owner, cfg.Repo, run.ID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error rerunning workflow: %v\n", err)
+		return 2
+	}
+
+	fmt.Printf("Successfully triggered rerun of workflow #%d\n", run.RunNumber)
+	return 0
+}
+
+func runCancel(args []string) int {
+	// Parse flags for cancel command
+	cfg, err := parseSubcommandFlags(args, "cancel")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 2
+	}
+
+	// Resolve repo and branch
+	if err := cfg.Resolve(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 2
+	}
+
+	// Create client
+	client, err := gh.NewClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 2
+	}
+
+	// Get latest run
+	run, err := client.FetchLatestRun(cfg.Owner, cfg.Repo, cfg.Branch)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching latest run: %v\n", err)
+		return 2
+	}
+
+	if run == nil {
+		fmt.Fprintf(os.Stderr, "No workflow runs found for %s/%s on branch %s\n", cfg.Owner, cfg.Repo, cfg.Branch)
+		return 2
+	}
+
+	if run.Status != gh.StatusInProgress && run.Status != gh.StatusQueued {
+		fmt.Fprintf(os.Stderr, "Workflow #%d is not running (status: %s)\n", run.RunNumber, run.Status)
+		return 2
+	}
+
+	// Confirm cancellation
+	fmt.Printf("Cancel workflow #%d (%s) on %s/%s?\n", run.RunNumber, run.Name, cfg.Owner, cfg.Repo)
+	if !getConfirmation() {
+		fmt.Println("Cancelled.")
+		return 0
+	}
+
+	// Cancel the workflow
+	err = client.CancelWorkflow(cfg.Owner, cfg.Repo, run.ID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error cancelling workflow: %v\n", err)
+		return 2
+	}
+
+	fmt.Printf("Successfully cancelled workflow #%d\n", run.RunNumber)
+	return 0
+}
+
+func runDispatch(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: workflow file required\nUsage: cimon dispatch <workflow-file> [flags]\n")
+		return 2
+	}
+
+	workflowFile := args[0]
+	flags := args[1:]
+
+	// Parse flags for dispatch command
+	cfg, err := parseSubcommandFlags(flags, "dispatch")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 2
+	}
+
+	// Resolve repo and branch
+	if err := cfg.Resolve(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 2
+	}
+
+	// Create client
+	client, err := gh.NewClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 2
+	}
+
+	// Confirm dispatch
+	fmt.Printf("Trigger workflow dispatch for %s on %s/%s (branch: %s)?\n", workflowFile, cfg.Owner, cfg.Repo, cfg.Branch)
+	if !getConfirmation() {
+		fmt.Println("Cancelled.")
+		return 0
+	}
+
+	// Dispatch the workflow
+	err = client.DispatchWorkflow(cfg.Owner, cfg.Repo, workflowFile, cfg.Branch)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error dispatching workflow: %v\n", err)
+		return 2
+	}
+
+	fmt.Printf("Successfully triggered workflow dispatch for %s\n", workflowFile)
+	return 0
+}
+
+func parseSubcommandFlags(args []string, command string) (*config.Config, error) {
+	cfg := &config.Config{}
+
+	fs := pflag.NewFlagSet(command, pflag.ContinueOnError)
+
+	var repoFlag string
+	fs.StringVarP(&repoFlag, "repo", "r", "", "Repository in owner/name format")
+	fs.StringVarP(&cfg.Branch, "branch", "b", "", "Branch name")
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+
+	// Handle --repo flag
+	if repoFlag != "" {
+		parts := strings.SplitN(repoFlag, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return nil, fmt.Errorf("invalid repo format %q: expected owner/name", repoFlag)
+		}
+		cfg.Owner = parts[0]
+		cfg.Repo = parts[1]
+	}
+
+	return cfg, nil
+}
+
+func getConfirmation() bool {
+	fmt.Print("Confirm? (y/N): ")
+	var response string
+	fmt.Scanln(&response)
+	response = strings.ToLower(strings.TrimSpace(response))
+	return response == "y" || response == "yes"
 }
 
 // JsonOutput represents the JSON structure for cimon output

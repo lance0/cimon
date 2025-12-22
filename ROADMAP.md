@@ -31,9 +31,9 @@
 
 ## v0.4 - Workflow Actions
 
-- [ ] Rerun workflow (`cimon retry`) with confirmation
-- [ ] Cancel running workflow
-- [ ] Trigger workflow dispatch
+- [x] Rerun workflow (`cimon retry`) with confirmation
+- [x] Cancel running workflow
+- [x] Trigger workflow dispatch
 
 ## v0.5 - Enhanced UX
 
