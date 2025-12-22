@@ -29,6 +29,14 @@ func (m Model) View() string {
 		return m.viewWorkflowViewer()
 	case StateArtifactSelection:
 		return m.viewArtifactSelection()
+	case StateLogFilter:
+		return m.viewLogFilter()
+	case StateMultiJobSelect:
+		return m.viewMultiJobSelect()
+	case StateCompareSelect:
+		return m.viewCompareSelect()
+	case StateCompareView:
+		return m.viewCompareView()
 	default:
 		return m.viewReady()
 	}
@@ -254,16 +262,19 @@ func (m Model) viewFooter() string {
 	} else if m.state == StateLogViewer {
 		// In log viewer, show navigation and exit options
 		if m.logSearchTerm != "" && len(m.logSearchMatches) > 0 {
-			bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.NextMatch, m.keys.PrevMatch, m.keys.Logs, m.keys.Quit}
+			bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.NextMatch, m.keys.PrevMatch, m.keys.LogFilter, m.keys.Logs, m.keys.Quit}
+		} else if m.multiJobMode {
+			// Show view toggle in multi-job mode
+			bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.Search, m.keys.LogViewToggle, m.keys.LogSave, m.keys.Logs, m.keys.Quit}
 		} else {
-			bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.Search, m.keys.Logs, m.keys.Quit}
+			bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.Search, m.keys.LogFilter, m.keys.LogSave, m.keys.LogHighlight, m.keys.Logs, m.keys.Quit}
 		}
 	} else if len(m.jobs) > 0 && !m.showingJobDetails && len(m.runs) > 1 {
 		// Show run navigation, Enter and Logs keys when multiple runs available
-		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.PrevRun, m.keys.NextRun, m.keys.BranchSelect, m.keys.Filter, m.keys.Enter, m.keys.Logs, m.keys.Quit}
+		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.PrevRun, m.keys.NextRun, m.keys.BranchSelect, m.keys.Filter, m.keys.LogMulti, m.keys.LogCompare, m.keys.Enter, m.keys.Logs, m.keys.Quit}
 	} else if len(m.jobs) > 0 && !m.showingJobDetails {
 		// Show Enter and Logs keys when jobs are available and not in details mode
-		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.BranchSelect, m.keys.Filter, m.keys.Enter, m.keys.Logs, m.keys.Quit}
+		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.BranchSelect, m.keys.Filter, m.keys.LogMulti, m.keys.Enter, m.keys.Logs, m.keys.Quit}
 	} else if m.showingJobDetails {
 		// Show Enter and Logs keys in job details mode
 		bindings = []key.Binding{m.keys.Refresh, m.keys.Open, m.keys.Logs, m.keys.Enter, m.keys.Quit}
@@ -676,6 +687,12 @@ func (m Model) viewLogViewer() string {
 	if m.logSyntaxEnabled {
 		b.WriteString(m.styles.Branch.Render(" [SYNTAX]"))
 	}
+	if len(m.logFilterStepNumbers) > 0 {
+		b.WriteString(m.styles.LogWarning.Render(fmt.Sprintf(" [FILTER: %d steps]", len(m.logFilterStepNumbers))))
+	}
+	if m.multiJobMode {
+		b.WriteString(m.styles.Branch.Render(fmt.Sprintf(" [MULTI: %d jobs]", len(m.multiJobIDs))))
+	}
 	b.WriteString("\n\n")
 
 	if m.logContent == "" {
@@ -946,4 +963,262 @@ func (m Model) viewLogLine(line string) string {
 	}
 
 	return line
+}
+
+// viewLogFilter displays the log filter step selection (v0.6)
+func (m Model) viewLogFilter() string {
+	var b strings.Builder
+
+	b.WriteString("Filter Log Steps\n\n")
+
+	if m.parsedLogs == nil || len(m.parsedLogs.Steps) == 0 {
+		b.WriteString("  No steps available\n")
+	} else {
+		b.WriteString("  Select steps to display (space to toggle, F/enter to apply):\n\n")
+
+		for i, step := range m.parsedLogs.Steps {
+			// Selection cursor
+			if i == m.logFilterIndex {
+				b.WriteString(m.styles.Selected.Render("→ "))
+			} else {
+				b.WriteString("  ")
+			}
+
+			// Checkbox
+			if m.isStepSelected(step.Number) {
+				b.WriteString("[✓] ")
+			} else {
+				b.WriteString("[ ] ")
+			}
+
+			// Step number and name
+			stepLabel := fmt.Sprintf("%d. %s", step.Number, step.Name)
+			if len(stepLabel) > m.width-10 {
+				stepLabel = stepLabel[:m.width-13] + "..."
+			}
+			b.WriteString(stepLabel)
+			b.WriteString("\n")
+		}
+
+		// Show current selection summary
+		b.WriteString("\n")
+		if len(m.logFilterStepNumbers) == 0 {
+			b.WriteString(m.styles.Dim.Render("  (no filter - showing all steps)"))
+		} else {
+			b.WriteString(m.styles.Dim.Render(fmt.Sprintf("  (%d step(s) selected)", len(m.logFilterStepNumbers))))
+		}
+		b.WriteString("\n")
+	}
+
+	// Footer with key hints
+	b.WriteString("\n")
+	b.WriteString("  ")
+	b.WriteString(m.styles.HelpKey.Render("space"))
+	b.WriteString(" toggle  ")
+	b.WriteString(m.styles.HelpKey.Render("F/enter"))
+	b.WriteString(" apply  ")
+	b.WriteString(m.styles.HelpKey.Render("esc"))
+	b.WriteString(" cancel\n")
+
+	return b.String()
+}
+
+// viewMultiJobSelect displays the multi-job selection UI (v0.6)
+func (m Model) viewMultiJobSelect() string {
+	var b strings.Builder
+
+	b.WriteString("Select Jobs to Follow\n\n")
+
+	if len(m.jobs) == 0 {
+		b.WriteString("  No jobs available\n")
+	} else {
+		b.WriteString("  Select up to 4 jobs to view simultaneously (space to toggle):\n\n")
+
+		for i, job := range m.jobs {
+			// Selection cursor
+			if i == m.multiJobSelectIdx {
+				b.WriteString(m.styles.Selected.Render("→ "))
+			} else {
+				b.WriteString("  ")
+			}
+
+			// Checkbox
+			if m.isJobSelected(job.ID) {
+				b.WriteString("[✓] ")
+			} else {
+				b.WriteString("[ ] ")
+			}
+
+			// Status icon
+			b.WriteString(m.styles.StatusIconStyled(job.Status, job.Conclusion))
+			b.WriteString(" ")
+
+			// Job name
+			jobName := job.Name
+			if len(jobName) > m.width-15 {
+				jobName = jobName[:m.width-18] + "..."
+			}
+			b.WriteString(jobName)
+			b.WriteString("\n")
+		}
+
+		// Show current selection summary
+		b.WriteString("\n")
+		if len(m.multiJobIDs) == 0 {
+			b.WriteString(m.styles.Dim.Render("  (no jobs selected)"))
+		} else if len(m.multiJobIDs) >= 4 {
+			b.WriteString(m.styles.LogWarning.Render(fmt.Sprintf("  (%d jobs selected - max reached)", len(m.multiJobIDs))))
+		} else {
+			b.WriteString(m.styles.Dim.Render(fmt.Sprintf("  (%d job(s) selected)", len(m.multiJobIDs))))
+		}
+		b.WriteString("\n")
+	}
+
+	// Footer with key hints
+	b.WriteString("\n")
+	b.WriteString("  ")
+	b.WriteString(m.styles.HelpKey.Render("space"))
+	b.WriteString(" toggle  ")
+	b.WriteString(m.styles.HelpKey.Render("m/enter"))
+	b.WriteString(" apply  ")
+	b.WriteString(m.styles.HelpKey.Render("esc"))
+	b.WriteString(" cancel\n")
+
+	return b.String()
+}
+
+// viewCompareSelect displays the run selection UI for comparison (v0.6)
+func (m Model) viewCompareSelect() string {
+	var b strings.Builder
+
+	if m.compareSelectStep == 0 {
+		b.WriteString("Compare Logs - Select First Run\n\n")
+	} else {
+		b.WriteString("Compare Logs - Select Second Run\n\n")
+		// Show first selection
+		if m.compareRunIdx1 >= 0 && m.compareRunIdx1 < len(m.runs) {
+			run := m.runs[m.compareRunIdx1]
+			b.WriteString(fmt.Sprintf("  First: #%d %s\n\n", run.RunNumber, run.Name))
+		}
+	}
+
+	if len(m.runs) < 2 {
+		b.WriteString("  Need at least 2 runs to compare\n")
+	} else {
+		for i, run := range m.runs {
+			// Selection cursor
+			if i == m.compareCursor {
+				b.WriteString(m.styles.Selected.Render("→ "))
+			} else {
+				b.WriteString("  ")
+			}
+
+			// Mark already selected run
+			if i == m.compareRunIdx1 {
+				b.WriteString("[1] ")
+			} else {
+				b.WriteString("    ")
+			}
+
+			// Status icon
+			b.WriteString(m.styles.StatusBadge(run.Status, run.Conclusion))
+			b.WriteString(" ")
+
+			// Run info
+			runLabel := fmt.Sprintf("#%d %s", run.RunNumber, run.Name)
+			if len(runLabel) > m.width-20 {
+				runLabel = runLabel[:m.width-23] + "..."
+			}
+			b.WriteString(runLabel)
+			b.WriteString(" ")
+			b.WriteString(m.styles.Dim.Render(timeAgo(run.UpdatedAt)))
+			b.WriteString("\n")
+		}
+	}
+
+	// Footer with key hints
+	b.WriteString("\n")
+	b.WriteString("  ")
+	b.WriteString(m.styles.HelpKey.Render("c/enter"))
+	b.WriteString(" select  ")
+	b.WriteString(m.styles.HelpKey.Render("esc"))
+	b.WriteString(" cancel\n")
+
+	return b.String()
+}
+
+// viewCompareView displays the diff comparison view (v0.6)
+func (m Model) viewCompareView() string {
+	var b strings.Builder
+
+	// Header
+	b.WriteString("Log Comparison\n")
+
+	// Show which runs are being compared
+	if m.compareRunIdx1 >= 0 && m.compareRunIdx1 < len(m.runs) &&
+		m.compareRunIdx2 >= 0 && m.compareRunIdx2 < len(m.runs) {
+		run1 := m.runs[m.compareRunIdx1]
+		run2 := m.runs[m.compareRunIdx2]
+		b.WriteString(m.styles.Dim.Render(fmt.Sprintf("  Run #%d vs Run #%d\n", run1.RunNumber, run2.RunNumber)))
+	}
+	b.WriteString("\n")
+
+	// Legend
+	b.WriteString("  ")
+	b.WriteString(m.styles.DiffRemoved.Render("- removed"))
+	b.WriteString("  ")
+	b.WriteString(m.styles.DiffAdded.Render("+ added"))
+	b.WriteString("\n\n")
+
+	if len(m.compareDiff) == 0 {
+		b.WriteString("  No differences found or logs are empty\n")
+	} else {
+		// Calculate visible area
+		maxLines := m.height - 12
+
+		// Display visible diff lines
+		start := m.compareScrollOff
+		end := start + maxLines
+		if end > len(m.compareDiff) {
+			end = len(m.compareDiff)
+		}
+
+		for i := start; i < end; i++ {
+			line := m.compareDiff[i]
+
+			// Truncate long lines
+			if len(line) > m.width-4 {
+				line = line[:m.width-7] + "..."
+			}
+
+			// Apply color based on diff type
+			if i < len(m.compareDiffColors) {
+				switch m.compareDiffColors[i] {
+				case -1:
+					line = m.styles.DiffRemoved.Render(line)
+				case 1:
+					line = m.styles.DiffAdded.Render(line)
+				}
+			}
+
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+
+		// Show scroll status
+		if len(m.compareDiff) > maxLines {
+			scrollPercent := float64(m.compareScrollOff) / float64(len(m.compareDiff)-maxLines) * 100
+			b.WriteString(fmt.Sprintf("\n[Line %d/%d (%.0f%%)]", m.compareScrollOff+1, len(m.compareDiff), scrollPercent))
+		}
+	}
+
+	// Footer
+	b.WriteString("\n")
+	b.WriteString("  ")
+	b.WriteString(m.styles.HelpKey.Render("↑/↓"))
+	b.WriteString(" scroll  ")
+	b.WriteString(m.styles.HelpKey.Render("c/esc"))
+	b.WriteString(" exit\n")
+
+	return b.String()
 }

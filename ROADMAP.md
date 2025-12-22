@@ -48,11 +48,11 @@
 
 ## v0.6 - Advanced Logs
 
-- [ ] Log filtering by job/step
+- [x] Log filtering by job/step (`F` key)
 - [x] Log export to file (`s` key)
 - [x] Syntax highlighting for different log types (`H` to toggle)
-- [ ] Log comparison between runs
-- [ ] Follow specific job logs in multi-job workflows
+- [x] Log comparison between runs (`c` key)
+- [x] Follow specific job logs in multi-job workflows (`m` key)
 
 ## v0.7 - Notifications & Automation
 

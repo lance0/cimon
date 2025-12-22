@@ -1,6 +1,10 @@
 package gh
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // WorkflowRun represents a GitHub Actions workflow run
 type WorkflowRun struct {
@@ -159,4 +163,62 @@ type Artifact struct {
 type ArtifactsResponse struct {
 	TotalCount int        `json:"total_count"`
 	Artifacts  []Artifact `json:"artifacts"`
+}
+
+// v0.6 - Structured log types for filtering
+
+// StepLog represents logs for a single step within a job
+type StepLog struct {
+	Number  int    // Step number (e.g., 1, 2, 3)
+	Name    string // Step name (e.g., "Checkout", "Build", "Test")
+	Content string // The actual log content for this step
+}
+
+// ParsedLogs represents structured log data with step-level granularity
+type ParsedLogs struct {
+	Steps      []StepLog         // Individual step logs in order
+	StepsByKey map[string]string // Quick lookup by "number_name" key
+	Combined   string            // Full combined log content (for backward compat)
+}
+
+// GetStep returns the log content for a specific step by number
+func (p *ParsedLogs) GetStep(number int) string {
+	for _, step := range p.Steps {
+		if step.Number == number {
+			return step.Content
+		}
+	}
+	return ""
+}
+
+// GetStepByName returns the log content for a step by name (partial match)
+func (p *ParsedLogs) GetStepByName(name string) string {
+	for _, step := range p.Steps {
+		if step.Name == name {
+			return step.Content
+		}
+	}
+	return ""
+}
+
+// FilteredContent returns log content filtered to specific step numbers
+func (p *ParsedLogs) FilteredContent(stepNumbers []int) string {
+	if len(stepNumbers) == 0 {
+		return p.Combined
+	}
+
+	var b strings.Builder
+	stepSet := make(map[int]bool)
+	for _, n := range stepNumbers {
+		stepSet[n] = true
+	}
+
+	for _, step := range p.Steps {
+		if stepSet[step.Number] {
+			b.WriteString(fmt.Sprintf("=== %d_%s ===\n", step.Number, step.Name))
+			b.WriteString(step.Content)
+			b.WriteString("\n\n")
+		}
+	}
+	return b.String()
 }

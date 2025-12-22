@@ -30,6 +30,10 @@ const (
 	StateHelp
 	StateWorkflowViewer
 	StateArtifactSelection
+	StateLogFilter      // v0.6: Log filter selection
+	StateMultiJobSelect // v0.6: Multi-job selection for following
+	StateCompareSelect  // v0.6: Run selection for comparison
+	StateCompareView    // v0.6: Viewing log comparison
 )
 
 // Model is the Bubble Tea model for the TUI
@@ -75,9 +79,33 @@ type Model struct {
 	logStreaming      bool
 	searchInputMode   bool   // true when typing search term
 	searchInputBuffer string // buffer for search input
-	logSyntaxEnabled  bool   // v0.6: syntax highlighting on/off
-	logExportMessage  string // v0.6: export success/error message
+	logSyntaxEnabled  bool      // v0.6: syntax highlighting on/off
+	logExportMessage  string    // v0.6: export success/error message
 	logExportTime     time.Time // v0.6: when message was set (for auto-clear)
+
+	// Log filtering state (v0.6)
+	parsedLogs           *gh.ParsedLogs // Structured log data with step-level parsing
+	logFilterStepNumbers []int          // Currently selected step numbers to display
+	logFilterIndex       int            // Current selection in filter menu
+
+	// Multi-job following state (v0.6)
+	multiJobMode       bool              // Whether we're in multi-job view mode
+	multiJobIDs        []int64           // Selected job IDs for multi-job view
+	multiJobContents   map[int64]string  // Log contents for each job
+	multiJobViewSplit  bool              // true=split view, false=combined view
+	multiJobSelectMode bool              // Currently selecting jobs
+	multiJobSelectIdx  int               // Selection cursor for job selection
+
+	// Log comparison state (v0.6)
+	compareRunIdx1     int      // First run index for comparison
+	compareRunIdx2     int      // Second run index for comparison (-1 = not selected)
+	compareSelectStep  int      // 0 = selecting first, 1 = selecting second
+	compareCursor      int      // Cursor for run selection
+	compareLogs1       string   // Logs for first run
+	compareLogs2       string   // Logs for second run
+	compareDiff        []string // Computed diff lines
+	compareDiffColors  []int    // 0=normal, 1=added, -1=removed
+	compareScrollOff   int      // Scroll offset for diff view
 
 	// Workflow viewer state
 	workflowContent      string
@@ -171,6 +199,22 @@ type ArtifactDownloadedMsg struct {
 type LogExportedMsg struct {
 	Filename string
 	Error    error
+}
+
+// ParsedLogsLoadedMsg is sent when structured logs are loaded (v0.6)
+type ParsedLogsLoadedMsg struct {
+	Logs *gh.ParsedLogs
+}
+
+// MultiJobLogsLoadedMsg is sent when logs for multiple jobs are loaded (v0.6)
+type MultiJobLogsLoadedMsg struct {
+	Contents map[int64]string
+}
+
+// CompareLogsLoadedMsg is sent when logs for comparison are loaded (v0.6)
+type CompareLogsLoadedMsg struct {
+	Logs1 string
+	Logs2 string
 }
 
 // ErrMsg is sent when an error occurs
@@ -333,6 +377,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logExportTime = time.Now()
 		return m, nil
 
+	case ParsedLogsLoadedMsg:
+		// v0.6: Handle structured log loading for filtering
+		m.parsedLogs = msg.Logs
+		if m.parsedLogs != nil {
+			m.logContent = m.parsedLogs.Combined
+		}
+		m.state = StateLogFilter
+		return m, nil
+
+	case MultiJobLogsLoadedMsg:
+		// v0.6: Handle multi-job log loading
+		m.multiJobContents = msg.Contents
+		m.multiJobMode = true
+		m.state = StateLogViewer
+		// Build combined content from all selected jobs
+		m.logContent = m.buildMultiJobContent()
+		return m, nil
+
+	case CompareLogsLoadedMsg:
+		// v0.6: Handle comparison log loading
+		m.compareLogs1 = msg.Logs1
+		m.compareLogs2 = msg.Logs2
+		m.compareDiff, m.compareDiffColors = m.computeDiff(msg.Logs1, msg.Logs2)
+		m.compareScrollOff = 0
+		m.state = StateCompareView
+		return m, nil
+
 	case TickMsg:
 		{
 			if m.state == StateLogViewer && m.logStreaming {
@@ -448,6 +519,26 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.selectedArtifactIndex > 0 {
 				m.selectedArtifactIndex--
 			}
+		} else if m.state == StateLogFilter {
+			// v0.6: Navigate log filter steps up
+			if m.logFilterIndex > 0 {
+				m.logFilterIndex--
+			}
+		} else if m.state == StateMultiJobSelect {
+			// v0.6: Navigate multi-job selection up
+			if m.multiJobSelectIdx > 0 {
+				m.multiJobSelectIdx--
+			}
+		} else if m.state == StateCompareSelect {
+			// v0.6: Navigate compare selection up
+			if m.compareCursor > 0 {
+				m.compareCursor--
+			}
+		} else if m.state == StateCompareView {
+			// v0.6: Scroll up in compare view
+			if m.compareScrollOff > 0 {
+				m.compareScrollOff--
+			}
 		} else {
 			if m.cursor > 0 {
 				m.cursor--
@@ -478,6 +569,27 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.selectedArtifactIndex < len(m.artifacts)-1 {
 				m.selectedArtifactIndex++
 			}
+		} else if m.state == StateLogFilter {
+			// v0.6: Navigate log filter steps down
+			if m.parsedLogs != nil && m.logFilterIndex < len(m.parsedLogs.Steps)-1 {
+				m.logFilterIndex++
+			}
+		} else if m.state == StateMultiJobSelect {
+			// v0.6: Navigate multi-job selection down
+			if m.multiJobSelectIdx < len(m.jobs)-1 {
+				m.multiJobSelectIdx++
+			}
+		} else if m.state == StateCompareSelect {
+			// v0.6: Navigate compare selection down
+			if m.compareCursor < len(m.runs)-1 {
+				m.compareCursor++
+			}
+		} else if m.state == StateCompareView {
+			// v0.6: Scroll down in compare view
+			maxScroll := len(m.compareDiff) - (m.height - 10)
+			if maxScroll > 0 && m.compareScrollOff < maxScroll {
+				m.compareScrollOff++
+			}
 		} else if m.showingJobDetails {
 			if m.selectedJob != nil && m.jobDetailsCursor < len(m.selectedJob.Steps)-1 {
 				m.jobDetailsCursor++
@@ -490,7 +602,40 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Enter):
-		if m.state == StateReady && len(m.jobs) > 0 && m.cursor >= 0 && m.cursor < len(m.jobs) {
+		if m.state == StateLogFilter {
+			// v0.6: Apply filter and return to log viewer
+			m.applyLogFilter()
+			m.state = StateLogViewer
+			return m, nil
+		} else if m.state == StateMultiJobSelect {
+			// v0.6: Apply multi-job selection and load logs
+			if len(m.multiJobIDs) > 0 {
+				m.loadingMessage = fmt.Sprintf("Loading logs for %d jobs...", len(m.multiJobIDs))
+				m.state = StateLoading
+				return m, m.fetchMultiJobLogs()
+			}
+			// No jobs selected, go back
+			m.state = StateReady
+			return m, nil
+		} else if m.state == StateCompareSelect {
+			// v0.6: Select run for comparison
+			if m.compareSelectStep == 0 {
+				m.compareRunIdx1 = m.compareCursor
+				m.compareSelectStep = 1
+				// Move cursor to a different run
+				if m.compareCursor == 0 && len(m.runs) > 1 {
+					m.compareCursor = 1
+				}
+			} else {
+				if m.compareCursor != m.compareRunIdx1 {
+					m.compareRunIdx2 = m.compareCursor
+					m.loadingMessage = "Loading logs for comparison..."
+					m.state = StateLoading
+					return m, m.fetchComparisonLogs()
+				}
+			}
+			return m, nil
+		} else if m.state == StateReady && len(m.jobs) > 0 && m.cursor >= 0 && m.cursor < len(m.jobs) {
 			// Enter job details mode
 			m.showingJobDetails = true
 			m.jobDetailsCursor = 0
@@ -677,6 +822,117 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case key.Matches(msg, m.keys.LogFilter):
+		// v0.6: Enter log filter selection mode
+		if m.state == StateLogViewer && m.logJobID != 0 {
+			m.logFilterIndex = 0
+			m.loadingMessage = "Loading step structure..."
+			m.state = StateLoading
+			return m, m.fetchLogsStructured(m.logJobID)
+		} else if m.state == StateLogFilter {
+			// Apply filter and return to log viewer
+			m.applyLogFilter()
+			m.state = StateLogViewer
+			return m, nil
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Escape):
+		// Exit from filter mode without applying
+		if m.state == StateLogFilter {
+			m.state = StateLogViewer
+			return m, nil
+		}
+		// v0.6: Exit from multi-job selection without applying
+		if m.state == StateMultiJobSelect {
+			m.state = StateReady
+			return m, nil
+		}
+		// v0.6: Exit from compare selection or view
+		if m.state == StateCompareSelect || m.state == StateCompareView {
+			m.state = StateReady
+			return m, nil
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Space):
+		// v0.6: Toggle step selection in log filter mode
+		if m.state == StateLogFilter && m.parsedLogs != nil && len(m.parsedLogs.Steps) > 0 {
+			stepNum := m.parsedLogs.Steps[m.logFilterIndex].Number
+			m.toggleStepFilter(stepNum)
+			return m, nil
+		}
+		// v0.6: Toggle job selection in multi-job select mode
+		if m.state == StateMultiJobSelect && len(m.jobs) > 0 {
+			jobID := m.jobs[m.multiJobSelectIdx].ID
+			m.toggleMultiJobSelection(jobID)
+			return m, nil
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.LogMulti):
+		// v0.6: Enter multi-job selection mode
+		if (m.state == StateReady || m.state == StateLogViewer) && len(m.jobs) > 1 {
+			m.multiJobSelectIdx = 0
+			m.state = StateMultiJobSelect
+			return m, nil
+		} else if m.state == StateMultiJobSelect {
+			// Apply selection and load logs
+			if len(m.multiJobIDs) > 0 {
+				m.loadingMessage = fmt.Sprintf("Loading logs for %d jobs...", len(m.multiJobIDs))
+				m.state = StateLoading
+				return m, m.fetchMultiJobLogs()
+			}
+			// No jobs selected, go back
+			m.state = StateReady
+			return m, nil
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.LogViewToggle):
+		// v0.6: Toggle between split and combined view in multi-job mode
+		if m.state == StateLogViewer && m.multiJobMode {
+			m.multiJobViewSplit = !m.multiJobViewSplit
+			m.logContent = m.buildMultiJobContent()
+			return m, nil
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.LogCompare):
+		// v0.6: Enter comparison mode
+		if m.state == StateReady && len(m.runs) >= 2 {
+			m.compareCursor = 0
+			m.compareSelectStep = 0
+			m.compareRunIdx1 = -1
+			m.compareRunIdx2 = -1
+			m.state = StateCompareSelect
+			return m, nil
+		} else if m.state == StateCompareSelect {
+			// Select current run
+			if m.compareSelectStep == 0 {
+				m.compareRunIdx1 = m.compareCursor
+				m.compareSelectStep = 1
+				// Move cursor to a different run
+				if m.compareCursor == 0 && len(m.runs) > 1 {
+					m.compareCursor = 1
+				}
+			} else {
+				if m.compareCursor != m.compareRunIdx1 {
+					m.compareRunIdx2 = m.compareCursor
+					// Load logs for both runs
+					m.loadingMessage = "Loading logs for comparison..."
+					m.state = StateLoading
+					return m, m.fetchComparisonLogs()
+				}
+			}
+			return m, nil
+		} else if m.state == StateCompareView {
+			// Exit comparison view
+			m.state = StateReady
+			return m, nil
+		}
+		return m, nil
+
 	default:
 		return m, nil
 	}
@@ -812,6 +1068,220 @@ func (m Model) exportCurrentLogs() tea.Cmd {
 		err := os.WriteFile(filename, []byte(content.String()), 0644)
 		return LogExportedMsg{Filename: filename, Error: err}
 	}
+}
+
+// fetchLogsStructured fetches logs with step-level structure for filtering (v0.6)
+func (m Model) fetchLogsStructured(jobID int64) tea.Cmd {
+	return func() tea.Msg {
+		logs, err := m.client.FetchJobLogsStructured(m.config.Owner, m.config.Repo, jobID)
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+		return ParsedLogsLoadedMsg{Logs: logs}
+	}
+}
+
+// toggleStepFilter toggles a step number in the filter selection (v0.6)
+func (m *Model) toggleStepFilter(stepNum int) {
+	// Check if step is already selected
+	for i, n := range m.logFilterStepNumbers {
+		if n == stepNum {
+			// Remove it
+			m.logFilterStepNumbers = append(m.logFilterStepNumbers[:i], m.logFilterStepNumbers[i+1:]...)
+			return
+		}
+	}
+	// Add it
+	m.logFilterStepNumbers = append(m.logFilterStepNumbers, stepNum)
+}
+
+// applyLogFilter applies the current filter selection to log content (v0.6)
+func (m *Model) applyLogFilter() {
+	if m.parsedLogs == nil {
+		return
+	}
+
+	if len(m.logFilterStepNumbers) == 0 {
+		// No filter - show all
+		m.logContent = m.parsedLogs.Combined
+	} else {
+		// Apply filter
+		m.logContent = m.parsedLogs.FilteredContent(m.logFilterStepNumbers)
+	}
+	m.logScrollOffset = 0 // Reset scroll position
+}
+
+// isStepSelected returns true if a step number is in the filter selection (v0.6)
+func (m Model) isStepSelected(stepNum int) bool {
+	for _, n := range m.logFilterStepNumbers {
+		if n == stepNum {
+			return true
+		}
+	}
+	return false
+}
+
+// toggleMultiJobSelection toggles a job ID in the multi-job selection (v0.6)
+func (m *Model) toggleMultiJobSelection(jobID int64) {
+	// Check if job is already selected
+	for i, id := range m.multiJobIDs {
+		if id == jobID {
+			// Remove it
+			m.multiJobIDs = append(m.multiJobIDs[:i], m.multiJobIDs[i+1:]...)
+			return
+		}
+	}
+	// Add it (max 4 jobs for reasonable display)
+	if len(m.multiJobIDs) < 4 {
+		m.multiJobIDs = append(m.multiJobIDs, jobID)
+	}
+}
+
+// isJobSelected returns true if a job ID is in the multi-job selection (v0.6)
+func (m Model) isJobSelected(jobID int64) bool {
+	for _, id := range m.multiJobIDs {
+		if id == jobID {
+			return true
+		}
+	}
+	return false
+}
+
+// fetchMultiJobLogs fetches logs for all selected jobs (v0.6)
+func (m Model) fetchMultiJobLogs() tea.Cmd {
+	return func() tea.Msg {
+		contents := make(map[int64]string)
+		for _, jobID := range m.multiJobIDs {
+			logs, err := m.client.FetchJobLogs(m.config.Owner, m.config.Repo, jobID)
+			if err != nil {
+				contents[jobID] = fmt.Sprintf("Error loading logs: %v", err)
+			} else {
+				contents[jobID] = logs
+			}
+		}
+		return MultiJobLogsLoadedMsg{Contents: contents}
+	}
+}
+
+// buildMultiJobContent builds the combined log content from multiple jobs (v0.6)
+func (m *Model) buildMultiJobContent() string {
+	if len(m.multiJobIDs) == 0 || m.multiJobContents == nil {
+		return ""
+	}
+
+	var b strings.Builder
+
+	// Find job names by ID
+	jobNames := make(map[int64]string)
+	for _, job := range m.jobs {
+		jobNames[job.ID] = job.Name
+	}
+
+	for _, jobID := range m.multiJobIDs {
+		content, ok := m.multiJobContents[jobID]
+		if !ok {
+			continue
+		}
+
+		jobName := jobNames[jobID]
+		if jobName == "" {
+			jobName = fmt.Sprintf("Job %d", jobID)
+		}
+
+		b.WriteString(fmt.Sprintf("\n══════════════════════════════════════════════════════════════════════════════\n"))
+		b.WriteString(fmt.Sprintf("  JOB: %s\n", jobName))
+		b.WriteString(fmt.Sprintf("══════════════════════════════════════════════════════════════════════════════\n\n"))
+		b.WriteString(content)
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// fetchComparisonLogs fetches logs for both runs to compare (v0.6)
+func (m Model) fetchComparisonLogs() tea.Cmd {
+	return func() tea.Msg {
+		if m.compareRunIdx1 < 0 || m.compareRunIdx2 < 0 ||
+			m.compareRunIdx1 >= len(m.runs) || m.compareRunIdx2 >= len(m.runs) {
+			return ErrMsg{Err: fmt.Errorf("invalid run selection for comparison")}
+		}
+
+		run1 := m.runs[m.compareRunIdx1]
+		run2 := m.runs[m.compareRunIdx2]
+
+		// Get jobs for both runs and fetch logs for the first job of each
+		jobs1, err := m.client.FetchJobs(m.config.Owner, m.config.Repo, run1.ID)
+		if err != nil || len(jobs1) == 0 {
+			return ErrMsg{Err: fmt.Errorf("failed to fetch jobs for run #%d", run1.RunNumber)}
+		}
+
+		jobs2, err := m.client.FetchJobs(m.config.Owner, m.config.Repo, run2.ID)
+		if err != nil || len(jobs2) == 0 {
+			return ErrMsg{Err: fmt.Errorf("failed to fetch jobs for run #%d", run2.RunNumber)}
+		}
+
+		// Fetch logs for the first job of each run
+		logs1, err := m.client.FetchJobLogs(m.config.Owner, m.config.Repo, jobs1[0].ID)
+		if err != nil {
+			logs1 = fmt.Sprintf("Error loading logs: %v", err)
+		}
+
+		logs2, err := m.client.FetchJobLogs(m.config.Owner, m.config.Repo, jobs2[0].ID)
+		if err != nil {
+			logs2 = fmt.Sprintf("Error loading logs: %v", err)
+		}
+
+		return CompareLogsLoadedMsg{Logs1: logs1, Logs2: logs2}
+	}
+}
+
+// computeDiff computes a simple line-by-line diff between two log contents (v0.6)
+func (m *Model) computeDiff(logs1, logs2 string) ([]string, []int) {
+	lines1 := strings.Split(logs1, "\n")
+	lines2 := strings.Split(logs2, "\n")
+
+	var result []string
+	var colors []int
+
+	// Simple diff: show lines that differ
+	// This is a basic implementation; a full diff algorithm would be more complex
+	maxLen := len(lines1)
+	if len(lines2) > maxLen {
+		maxLen = len(lines2)
+	}
+
+	// Limit to 10000 lines for performance
+	if maxLen > 10000 {
+		maxLen = 10000
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var line1, line2 string
+		if i < len(lines1) {
+			line1 = lines1[i]
+		}
+		if i < len(lines2) {
+			line2 = lines2[i]
+		}
+
+		if line1 == line2 {
+			// Same line
+			result = append(result, "  "+line1)
+			colors = append(colors, 0)
+		} else {
+			// Different - show both with markers
+			if line1 != "" {
+				result = append(result, "- "+line1)
+				colors = append(colors, -1) // removed
+			}
+			if line2 != "" {
+				result = append(result, "+ "+line2)
+				colors = append(colors, 1) // added
+			}
+		}
+	}
+
+	return result, colors
 }
 
 func (m Model) checkStreamingStatus() tea.Cmd {

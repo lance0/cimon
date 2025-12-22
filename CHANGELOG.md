@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-#### v0.6 Advanced Logs (In Progress)
+#### v0.6 Advanced Logs
 - **Syntax Highlighting**: Color-coded log lines for errors (red), warnings (yellow), commands (cyan), and groups (bold) (`H` to toggle)
 - **Log Export**: Save current log view to timestamped file with metadata header (`s` key)
+- **Log Filtering**: Filter logs by step with multi-select checkbox UI (`F` key in log viewer)
+- **Multi-Job Following**: View logs from multiple jobs simultaneously (`m` key, select up to 4 jobs)
+- **Log Comparison**: Compare logs between two different workflow runs with diff view (`c` key)
 
 #### v0.5 Enhanced UX
 - **Workflow History**: Browse 10+ recent runs with pagination (`h`/`l` keys)

@@ -30,6 +30,10 @@ type KeyMap struct {
 	LogCompare    key.Binding
 	LogMulti      key.Binding
 	LogViewToggle key.Binding
+
+	// General UI keys
+	Escape key.Binding
+	Space  key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings
@@ -132,6 +136,16 @@ func DefaultKeyMap() KeyMap {
 		LogViewToggle: key.NewBinding(
 			key.WithKeys("v"),
 			key.WithHelp("v", "split/combined"),
+		),
+
+		// General UI keys
+		Escape: key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "cancel"),
+		),
+		Space: key.NewBinding(
+			key.WithKeys(" "),
+			key.WithHelp("space", "toggle"),
 		),
 	}
 }
