@@ -21,6 +21,8 @@ func (m Model) View() string {
 		return m.viewLogViewer()
 	case StateBranchSelection:
 		return m.viewBranchSelection()
+	case StateStatusFilter:
+		return m.viewStatusFilter()
 	default:
 		return m.viewReady()
 	}
@@ -113,6 +115,21 @@ func (m Model) viewHeader() string {
 	b.WriteString(m.styles.Separator.Render(" • "))
 	b.WriteString(m.styles.Branch.Render(m.config.Branch))
 
+	// Show current filter if active
+	if m.currentStatusFilter != "" {
+		filterLabels := map[string]string{
+			"success":     "✓",
+			"failure":     "✗",
+			"in_progress": "●",
+			"completed":   "○",
+			"queued":      "…",
+		}
+		if icon, ok := filterLabels[m.currentStatusFilter]; ok {
+			filterInfo := fmt.Sprintf(" [%s]", icon)
+			b.WriteString(m.styles.Separator.Render(filterInfo))
+		}
+	}
+
 	// Show run navigation info if we have multiple runs
 	if len(m.runs) > 1 {
 		runInfo := fmt.Sprintf(" [%d/%d]", m.selectedRunIndex+1, len(m.runs))
@@ -201,7 +218,10 @@ func (m Model) viewFooter() string {
 	b.WriteString("  ")
 
 	var bindings []key.Binding
-	if m.state == StateBranchSelection {
+	if m.state == StateStatusFilter {
+		// In status filter, show navigation and selection options
+		bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.Enter, m.keys.Filter, m.keys.Quit}
+	} else if m.state == StateBranchSelection {
 		// In branch selection, show navigation and selection options
 		bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.Enter, m.keys.BranchSelect, m.keys.Quit}
 	} else if m.state == StateLogViewer {
@@ -213,15 +233,15 @@ func (m Model) viewFooter() string {
 		}
 	} else if len(m.jobs) > 0 && !m.showingJobDetails && len(m.runs) > 1 {
 		// Show run navigation, Enter and Logs keys when multiple runs available
-		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.PrevRun, m.keys.NextRun, m.keys.BranchSelect, m.keys.Enter, m.keys.Logs, m.keys.Quit}
+		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.PrevRun, m.keys.NextRun, m.keys.BranchSelect, m.keys.Filter, m.keys.Enter, m.keys.Logs, m.keys.Quit}
 	} else if len(m.jobs) > 0 && !m.showingJobDetails {
 		// Show Enter and Logs keys when jobs are available and not in details mode
-		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.BranchSelect, m.keys.Enter, m.keys.Logs, m.keys.Quit}
+		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.BranchSelect, m.keys.Filter, m.keys.Enter, m.keys.Logs, m.keys.Quit}
 	} else if m.showingJobDetails {
 		// Show Enter and Logs keys in job details mode
 		bindings = []key.Binding{m.keys.Refresh, m.keys.Open, m.keys.Logs, m.keys.Enter, m.keys.Quit}
 	} else {
-		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.BranchSelect, m.keys.Quit}
+		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.BranchSelect, m.keys.Filter, m.keys.Quit}
 	}
 
 	for i, binding := range bindings {
@@ -461,6 +481,44 @@ func (m Model) viewBranchSelection() string {
 
 			b.WriteString("\n")
 		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.viewFooter())
+
+	return b.String()
+}
+
+func (m Model) viewStatusFilter() string {
+	var b strings.Builder
+
+	b.WriteString("Filter by Status\n\n")
+
+	filterLabels := map[string]string{
+		"":            "All",
+		"success":     "Success",
+		"failure":     "Failure",
+		"in_progress": "In Progress",
+		"completed":   "Completed",
+		"queued":      "Queued",
+	}
+
+	for i, filterValue := range m.statusFilterOptions {
+		if i == m.selectedFilterIndex {
+			b.WriteString(m.styles.Selected.Render("→ "))
+		} else {
+			b.WriteString("  ")
+		}
+
+		label := filterLabels[filterValue]
+		if filterValue == m.currentStatusFilter {
+			b.WriteString(m.styles.StatusSuccess.Render(label))
+			b.WriteString(" (current)")
+		} else {
+			b.WriteString(label)
+		}
+
+		b.WriteString("\n")
 	}
 
 	b.WriteString("\n")

@@ -26,6 +26,7 @@ const (
 	StateJobDetails
 	StateLogViewer
 	StateBranchSelection
+	StateStatusFilter
 )
 
 // Model is the Bubble Tea model for the TUI
@@ -48,6 +49,11 @@ type Model struct {
 	// Navigation state
 	selectedRunIndex    int // Index of currently selected run in runs slice
 	selectedBranchIndex int // Index of currently selected branch in branch selection
+
+	// Filter state
+	currentStatusFilter string   // Current status filter ("", "success", "failure", "in_progress", etc.)
+	statusFilterOptions []string // Available filter options
+	selectedFilterIndex int      // Index of currently selected filter option
 
 	// Job details state
 	showingJobDetails bool
@@ -144,14 +150,16 @@ func NewModel(cfg *config.Config, client *gh.Client) Model {
 	colorEnabled := os.Getenv("NO_COLOR") == "" && !cfg.NoColor
 
 	return Model{
-		config:           cfg,
-		client:           client,
-		state:            StateLoading,
-		selectedRunIndex: 0, // Start with the first (latest) run
-		styles:           DefaultStyles(colorEnabled),
-		keys:             DefaultKeyMap(),
-		spinner:          s,
-		watching:         cfg.Watch,
+		config:              cfg,
+		client:              client,
+		state:               StateLoading,
+		selectedRunIndex:    0,  // Start with the first (latest) run
+		currentStatusFilter: "", // Start with no filter (all runs)
+		statusFilterOptions: []string{"", "success", "failure", "in_progress", "completed", "queued"},
+		styles:              DefaultStyles(colorEnabled),
+		keys:                DefaultKeyMap(),
+		spinner:             s,
+		watching:            cfg.Watch,
 	}
 }
 
@@ -296,6 +304,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.selectedBranchIndex > 0 {
 				m.selectedBranchIndex--
 			}
+		} else if m.state == StateStatusFilter {
+			// Navigate filter options up
+			if m.selectedFilterIndex > 0 {
+				m.selectedFilterIndex--
+			}
 		} else {
 			if m.cursor > 0 {
 				m.cursor--
@@ -316,13 +329,18 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.selectedBranchIndex < len(m.branches)-1 {
 				m.selectedBranchIndex++
 			}
+		} else if m.state == StateStatusFilter {
+			// Navigate filter options down
+			if m.selectedFilterIndex < len(m.statusFilterOptions)-1 {
+				m.selectedFilterIndex++
+			}
 		} else if m.showingJobDetails {
 			if m.selectedJob != nil && m.jobDetailsCursor < len(m.selectedJob.Steps)-1 {
 				m.jobDetailsCursor++
 			}
 		} else {
 			if m.cursor < len(m.jobs)-1 {
-				m.cursor++
+				m.cursor--
 			}
 		}
 		return m, nil
@@ -439,6 +457,23 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, nil
+
+	case key.Matches(msg, m.keys.Filter):
+		if m.state == StateReady && !m.showingJobDetails && !m.showingLogs {
+			// Enter status filter mode
+			m.selectedFilterIndex = 0 // Start with first option (All)
+			m.state = StateStatusFilter
+			return m, nil
+		} else if m.state == StateStatusFilter {
+			// Apply selected filter and reload runs
+			if m.selectedFilterIndex >= 0 && m.selectedFilterIndex < len(m.statusFilterOptions) {
+				m.currentStatusFilter = m.statusFilterOptions[m.selectedFilterIndex]
+				m.state = StateLoading
+				m.selectedRunIndex = 0
+				return m, m.fetchWorkflowRuns()
+			}
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -448,7 +483,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) fetchWorkflowRuns() tea.Cmd {
 	return func() tea.Msg {
-		runs, err := m.client.FetchWorkflowRuns(m.config.Owner, m.config.Repo, m.config.Branch, "", 1, 10) // Fetch 10 most recent runs
+		runs, err := m.client.FetchWorkflowRuns(m.config.Owner, m.config.Repo, m.config.Branch, m.currentStatusFilter, 1, 10) // Fetch 10 most recent runs with current filter
 		if err != nil {
 			return ErrMsg{Err: err}
 		}

@@ -18,6 +18,7 @@ type KeyMap struct {
 	NextRun      key.Binding
 	PrevRun      key.Binding
 	BranchSelect key.Binding
+	Filter       key.Binding
 	Help         key.Binding
 }
 
@@ -79,6 +80,10 @@ func DefaultKeyMap() KeyMap {
 		BranchSelect: key.NewBinding(
 			key.WithKeys("b"),
 			key.WithHelp("b", "select branch"),
+		),
+		Filter: key.NewBinding(
+			key.WithKeys("f"),
+			key.WithHelp("f", "filter status"),
 		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),

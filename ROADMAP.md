@@ -42,7 +42,7 @@
 - [ ] Better error handling with retry logic
 - [ ] Loading states and progress indicators
 - [ ] Keyboard shortcuts help dialog (?)
-- [ ] Filter workflows by status (success/failure/running)
+- [x] Filter workflows by status (success/failure/running)
 - [ ] View workflow YAML/files
 - [ ] Download job artifacts
 
