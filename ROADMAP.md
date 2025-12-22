@@ -19,9 +19,9 @@
 
 ## v0.2 - Job Details
 
-- [ ] Job selection with details pane
-- [ ] Show job steps within selected job
-- [ ] Open individual job URL in browser
+- [x] Job selection with details pane
+- [x] Show job steps within selected job
+- [x] Open individual job URL in browser
 
 ## v0.3 - Logs
 

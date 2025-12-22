@@ -20,3 +20,19 @@ func (c *Client) FetchJobs(owner, repo string, runID int64) ([]Job, error) {
 
 	return response.Jobs, nil
 }
+
+// FetchJobDetails fetches detailed information for a specific job including steps.
+func (c *Client) FetchJobDetails(owner, repo string, jobID int64) (*Job, error) {
+	path := fmt.Sprintf("repos/%s/%s/actions/jobs/%d",
+		url.PathEscape(owner),
+		url.PathEscape(repo),
+		jobID,
+	)
+
+	var job Job
+	if err := c.Get(path, &job); err != nil {
+		return nil, err
+	}
+
+	return &job, nil
+}

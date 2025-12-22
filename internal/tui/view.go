@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/bubbles/key"
 )
 
 // View implements tea.Model
@@ -13,6 +15,8 @@ func (m Model) View() string {
 		return m.viewLoading()
 	case StateError:
 		return m.viewError()
+	case StateJobDetails:
+		return m.viewJobDetails()
 	default:
 		return m.viewReady()
 	}
@@ -67,6 +71,10 @@ func (m Model) getErrorHint() string {
 }
 
 func (m Model) viewReady() string {
+	if m.showingJobDetails {
+		return m.viewSplit()
+	}
+
 	var b strings.Builder
 
 	// Header
@@ -182,7 +190,17 @@ func (m Model) viewFooter() string {
 
 	b.WriteString("  ")
 
-	bindings := m.keys.ShortHelp()
+	var bindings []key.Binding
+	if len(m.jobs) > 0 && !m.showingJobDetails {
+		// Show Enter key when jobs are available and not in details mode
+		bindings = m.keys.ShortHelpWithEnter()
+	} else if m.showingJobDetails {
+		// Show Enter key to exit details mode
+		bindings = []key.Binding{m.keys.Refresh, m.keys.Open, m.keys.Enter, m.keys.Quit}
+	} else {
+		bindings = m.keys.ShortHelp()
+	}
+
 	for i, binding := range bindings {
 		if i > 0 {
 			b.WriteString("  ")
@@ -241,4 +259,217 @@ func formatDuration(d time.Duration) string {
 	hours := int(d.Hours())
 	mins := int(d.Minutes()) % 60
 	return fmt.Sprintf("%dh %dm", hours, mins)
+}
+
+func (m Model) viewSplit() string {
+	var b strings.Builder
+
+	// Header
+	b.WriteString(m.viewHeader())
+	b.WriteString("\n")
+
+	// Run summary
+	if m.run != nil {
+		b.WriteString(m.viewRunSummary())
+		b.WriteString("\n")
+	}
+
+	// Split view: jobs on left, details on right
+	leftWidth := m.width / 2
+	if m.width > 80 {
+		leftWidth = m.width * 3 / 5 // 60% for jobs, 40% for details
+	}
+
+	jobsView := m.viewJobsList(leftWidth)
+	detailsView := m.viewJobDetailsPanel(m.width - leftWidth - 3) // -3 for separator
+
+	// Combine with separator
+	linesJobs := strings.Split(strings.TrimSuffix(jobsView, "\n"), "\n")
+	linesDetails := strings.Split(strings.TrimSuffix(detailsView, "\n"), "\n")
+
+	maxLines := len(linesJobs)
+	if len(linesDetails) > maxLines {
+		maxLines = len(linesDetails)
+	}
+
+	for i := 0; i < maxLines; i++ {
+		if i < len(linesJobs) {
+			b.WriteString(linesJobs[i])
+		} else {
+			b.WriteString(strings.Repeat(" ", leftWidth))
+		}
+
+		b.WriteString(" │ ")
+
+		if i < len(linesDetails) {
+			b.WriteString(linesDetails[i])
+		}
+
+		b.WriteString("\n")
+	}
+
+	// Footer
+	b.WriteString(m.viewFooter())
+
+	return b.String()
+}
+
+func (m Model) viewJobsList(width int) string {
+	var b strings.Builder
+
+	b.WriteString("Jobs:\n")
+
+	for i, job := range m.jobs {
+		// Icon
+		b.WriteString("  ")
+		b.WriteString(m.styles.StatusIconStyled(job.Status, job.Conclusion))
+		b.WriteString(" ")
+
+		// Job name (highlight if selected)
+		name := job.Name
+		if len(name) > width-8 { // Truncate if too long
+			name = name[:width-11] + "..."
+		}
+		if i == m.cursor {
+			b.WriteString(m.styles.Selected.Render(name))
+		} else {
+			b.WriteString(m.styles.JobName.Render(name))
+		}
+
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+func (m Model) viewJobDetailsPanel(width int) string {
+	if m.selectedJob == nil {
+		return "Job Details:\n  Loading..."
+	}
+
+	var b strings.Builder
+
+	job := m.selectedJob
+
+	b.WriteString("Job Details:\n")
+
+	// Job name and status
+	b.WriteString("  ")
+	b.WriteString(m.styles.StatusIconStyled(job.Status, job.Conclusion))
+	b.WriteString(" ")
+	b.WriteString(m.styles.JobName.Render(job.Name))
+	b.WriteString("\n")
+
+	// Job metadata
+	if job.RunnerName != "" {
+		b.WriteString("  Runner: ")
+		b.WriteString(m.styles.Dim.Render(job.RunnerName))
+		b.WriteString("\n")
+	}
+
+	if job.StartedAt != nil {
+		b.WriteString("  Started: ")
+		b.WriteString(m.styles.Dim.Render(job.StartedAt.Format("15:04:05")))
+		b.WriteString("\n")
+	}
+
+	if job.CompletedAt != nil {
+		b.WriteString("  Completed: ")
+		b.WriteString(m.styles.Dim.Render(job.CompletedAt.Format("15:04:05")))
+		b.WriteString("\n")
+	}
+
+	// Steps
+	if len(job.Steps) > 0 {
+		b.WriteString("  Steps:\n")
+
+		for i, step := range job.Steps {
+			b.WriteString("    ")
+			b.WriteString(m.styles.StatusIconStyled(step.Status, step.Conclusion))
+			b.WriteString(" ")
+
+			stepName := step.Name
+			if len(stepName) > width-12 { // Truncate if too long
+				stepName = stepName[:width-15] + "..."
+			}
+
+			if i == m.jobDetailsCursor {
+				b.WriteString(m.styles.Selected.Render(stepName))
+			} else {
+				b.WriteString(m.styles.JobName.Render(stepName))
+			}
+
+			b.WriteString("\n")
+		}
+	} else {
+		b.WriteString("  No steps available\n")
+	}
+
+	return b.String()
+}
+
+func (m Model) viewJobDetails() string {
+	var b strings.Builder
+
+	// Header
+	b.WriteString(m.viewHeader())
+	b.WriteString("\n")
+
+	b.WriteString("Job Details\n\n")
+
+	if m.selectedJob != nil {
+		job := m.selectedJob
+
+		// Job info
+		b.WriteString("Job: ")
+		b.WriteString(m.styles.JobName.Render(job.Name))
+		b.WriteString("\n")
+
+		b.WriteString("Status: ")
+		b.WriteString(m.styles.StatusBadge(job.Status, job.Conclusion))
+		b.WriteString("\n")
+
+		if job.RunnerName != "" {
+			b.WriteString("Runner: ")
+			b.WriteString(m.styles.Dim.Render(job.RunnerName))
+			b.WriteString("\n")
+		}
+
+		if job.StartedAt != nil {
+			b.WriteString("Started: ")
+			b.WriteString(m.styles.Dim.Render(job.StartedAt.Format("2006-01-02 15:04:05")))
+			b.WriteString("\n")
+		}
+
+		if job.CompletedAt != nil {
+			b.WriteString("Completed: ")
+			b.WriteString(m.styles.Dim.Render(job.CompletedAt.Format("2006-01-02 15:04:05")))
+			b.WriteString("\n")
+		}
+
+		// Steps
+		if len(job.Steps) > 0 {
+			b.WriteString("\nSteps:\n")
+
+			for i, step := range job.Steps {
+				b.WriteString("  ")
+				b.WriteString(m.styles.StatusIconStyled(step.Status, step.Conclusion))
+				b.WriteString(" ")
+
+				if i == m.jobDetailsCursor {
+					b.WriteString(m.styles.Selected.Render(step.Name))
+				} else {
+					b.WriteString(m.styles.JobName.Render(step.Name))
+				}
+
+				b.WriteString("\n")
+			}
+		}
+	}
+
+	// Footer
+	b.WriteString("\n")
+	b.WriteString(m.viewFooter())
+
+	return b.String()
 }

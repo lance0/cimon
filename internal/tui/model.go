@@ -21,6 +21,7 @@ const (
 	StateReady
 	StateWatching
 	StateError
+	StateJobDetails
 )
 
 // Model is the Bubble Tea model for the TUI
@@ -37,6 +38,11 @@ type Model struct {
 	// Data
 	run  *gh.WorkflowRun
 	jobs []gh.Job
+
+	// Job details state
+	showingJobDetails bool
+	selectedJob       *gh.Job
+	jobDetailsCursor  int
 
 	// UI state
 	cursor    int
@@ -71,6 +77,11 @@ type RunLoadedMsg struct {
 // JobsLoadedMsg is sent when jobs are loaded
 type JobsLoadedMsg struct {
 	Jobs []gh.Job
+}
+
+// JobDetailsLoadedMsg is sent when job details are loaded
+type JobDetailsLoadedMsg struct {
+	Job *gh.Job
 }
 
 // ErrMsg is sent when an error occurs
@@ -151,6 +162,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateExitCode()
 		return m, m.scheduleNextPoll()
 
+	case JobDetailsLoadedMsg:
+		m.selectedJob = msg.Job
+		m.state = StateJobDetails
+		return m, nil
+
 	case TickMsg:
 		if m.watching {
 			return m, m.fetchLatestRun()
@@ -195,8 +211,31 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Down):
-		if m.cursor < len(m.jobs)-1 {
-			m.cursor++
+		if m.showingJobDetails {
+			if m.selectedJob != nil && m.jobDetailsCursor < len(m.selectedJob.Steps)-1 {
+				m.jobDetailsCursor++
+			}
+		} else {
+			if m.cursor < len(m.jobs)-1 {
+				m.cursor++
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Enter):
+		if m.state == StateReady && len(m.jobs) > 0 && m.cursor >= 0 && m.cursor < len(m.jobs) {
+			// Enter job details mode
+			m.showingJobDetails = true
+			m.jobDetailsCursor = 0
+			job := m.jobs[m.cursor]
+			return m, m.fetchJobDetails(job.ID)
+		} else if m.state == StateJobDetails {
+			// Exit job details mode
+			m.showingJobDetails = false
+			m.selectedJob = nil
+			m.jobDetailsCursor = 0
+			m.state = StateReady
+			return m, nil
 		}
 		return m, nil
 	}
@@ -229,6 +268,16 @@ func (m Model) fetchJobs() tea.Cmd {
 	}
 }
 
+func (m Model) fetchJobDetails(jobID int64) tea.Cmd {
+	return func() tea.Msg {
+		job, err := m.client.FetchJobDetails(m.config.Owner, m.config.Repo, jobID)
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+		return JobDetailsLoadedMsg{Job: job}
+	}
+}
+
 func (m Model) scheduleNextPoll() tea.Cmd {
 	if !m.watching {
 		return nil
@@ -240,11 +289,11 @@ func (m Model) scheduleNextPoll() tea.Cmd {
 
 func (m Model) openInBrowser() tea.Cmd {
 	return func() tea.Msg {
-		if m.run == nil {
-			return nil
+		if m.showingJobDetails && m.selectedJob != nil {
+			openURL(m.selectedJob.HTMLURL)
+		} else if m.run != nil {
+			openURL(m.run.HTMLURL)
 		}
-		// Will be implemented with browser package
-		openURL(m.run.HTMLURL)
 		return nil
 	}
 }

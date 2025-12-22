@@ -32,6 +32,17 @@ type Job struct {
 	CompletedAt *time.Time `json:"completed_at"`
 	HTMLURL     string     `json:"html_url"`
 	RunnerName  string     `json:"runner_name"`
+	Steps       []JobStep  `json:"steps"`
+}
+
+// JobStep represents a step within a job
+type JobStep struct {
+	Number      int        `json:"number"`
+	Name        string     `json:"name"`
+	Status      string     `json:"status"`     // pending, in_progress, completed
+	Conclusion  *string    `json:"conclusion"` // success, failure, cancelled, skipped
+	StartedAt   *time.Time `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at"`
 }
 
 // WorkflowRunsResponse is the API response for listing workflow runs
