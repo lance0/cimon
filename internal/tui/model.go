@@ -90,6 +90,9 @@ type Model struct {
 	width  int
 	height int
 
+	// Loading state
+	loadingMessage string
+
 	// Exit code to return (set when quitting)
 	exitCode int
 }
@@ -156,6 +159,7 @@ func NewModel(cfg *config.Config, client *gh.Client) Model {
 		selectedRunIndex:    0,  // Start with the first (latest) run
 		currentStatusFilter: "", // Start with no filter (all runs)
 		statusFilterOptions: []string{"", "success", "failure", "in_progress", "completed", "queued"},
+		loadingMessage:      "Loading workflow runs...",
 		styles:              DefaultStyles(colorEnabled),
 		keys:                DefaultKeyMap(),
 		spinner:             s,
@@ -258,6 +262,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.state == StateLogViewer && m.logStreaming {
 			return m, m.updateLogs(m.logJobID)
 		} else if m.watching {
+			m.loadingMessage = "Watching for updates..."
+			m.state = StateLoading
 			return m, m.fetchWorkflowRuns()
 		}
 		return m, nil
@@ -278,6 +284,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case key.Matches(msg, m.keys.Refresh):
+		m.loadingMessage = "Refreshing workflow runs..."
 		m.state = StateLoading
 		return m, m.fetchWorkflowRuns()
 
@@ -359,6 +366,25 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.jobDetailsCursor = 0
 			m.state = StateReady
 			return m, nil
+		} else if m.state == StateBranchSelection {
+			// Select the current branch and reload runs
+			if len(m.branches) > 0 && m.selectedBranchIndex >= 0 && m.selectedBranchIndex < len(m.branches) {
+				selectedBranch := m.branches[m.selectedBranchIndex]
+				m.config.Branch = selectedBranch.Name
+				m.loadingMessage = fmt.Sprintf("Switching to branch '%s'...", selectedBranch.Name)
+				m.state = StateLoading
+				m.selectedRunIndex = 0
+				return m, m.fetchWorkflowRuns()
+			}
+		} else if m.state == StateStatusFilter {
+			// Apply selected filter and reload runs
+			if m.selectedFilterIndex >= 0 && m.selectedFilterIndex < len(m.statusFilterOptions) {
+				m.currentStatusFilter = m.statusFilterOptions[m.selectedFilterIndex]
+				m.loadingMessage = fmt.Sprintf("Applying '%s' filter...", m.statusFilterOptions[m.selectedFilterIndex])
+				m.state = StateLoading
+				m.selectedRunIndex = 0
+				return m, m.fetchWorkflowRuns()
+			}
 		}
 		return m, nil
 

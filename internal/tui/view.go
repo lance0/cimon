@@ -29,7 +29,11 @@ func (m Model) View() string {
 }
 
 func (m Model) viewLoading() string {
-	return fmt.Sprintf("\n  %s Fetching latest run...\n", m.spinner.View())
+	message := m.loadingMessage
+	if message == "" {
+		message = "Fetching latest run..."
+	}
+	return fmt.Sprintf("\n  %s %s\n", m.spinner.View(), message)
 }
 
 func (m Model) viewError() string {
@@ -457,7 +461,11 @@ func (m Model) viewBranchSelection() string {
 	b.WriteString("Select Branch\n\n")
 
 	if len(m.branches) == 0 {
-		b.WriteString("Loading branches...")
+		b.WriteString("  ")
+		b.WriteString(m.styles.Dim.Render("Loading branches"))
+		b.WriteString(" ")
+		b.WriteString(m.spinner.View())
+		b.WriteString("\n")
 	} else {
 		for i, branch := range m.branches {
 			if i == m.selectedBranchIndex {
@@ -536,7 +544,9 @@ func (m Model) viewJobDetails() string {
 
 	b.WriteString("Job Details\n\n")
 
-	if m.selectedJob != nil {
+	if m.selectedJob == nil {
+		b.WriteString("Loading job details...")
+	} else {
 		job := m.selectedJob
 
 		// Job info
@@ -608,7 +618,11 @@ func (m Model) viewLogViewer() string {
 	b.WriteString("\n\n")
 
 	if m.logContent == "" {
-		b.WriteString("Loading logs...")
+		b.WriteString("  ")
+		b.WriteString(m.styles.Dim.Render("Loading logs"))
+		b.WriteString(" ")
+		b.WriteString(m.spinner.View())
+		b.WriteString("\n")
 	} else {
 		// Split log content into lines
 		lines := strings.Split(strings.TrimSuffix(m.logContent, "\n"), "\n")
