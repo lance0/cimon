@@ -22,6 +22,14 @@ type KeyMap struct {
 	Help         key.Binding
 	Workflow     key.Binding
 	Artifacts    key.Binding
+
+	// v0.6 Log keys
+	LogFilter     key.Binding
+	LogSave       key.Binding
+	LogHighlight  key.Binding
+	LogCompare    key.Binding
+	LogMulti      key.Binding
+	LogViewToggle key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings
@@ -98,6 +106,32 @@ func DefaultKeyMap() KeyMap {
 		Artifacts: key.NewBinding(
 			key.WithKeys("a"),
 			key.WithHelp("a", "download artifacts"),
+		),
+
+		// v0.6 Log keys
+		LogFilter: key.NewBinding(
+			key.WithKeys("F"),
+			key.WithHelp("F", "filter logs"),
+		),
+		LogSave: key.NewBinding(
+			key.WithKeys("s"),
+			key.WithHelp("s", "save logs"),
+		),
+		LogHighlight: key.NewBinding(
+			key.WithKeys("H"),
+			key.WithHelp("H", "toggle syntax"),
+		),
+		LogCompare: key.NewBinding(
+			key.WithKeys("c"),
+			key.WithHelp("c", "compare runs"),
+		),
+		LogMulti: key.NewBinding(
+			key.WithKeys("m"),
+			key.WithHelp("m", "multi-job"),
+		),
+		LogViewToggle: key.NewBinding(
+			key.WithKeys("v"),
+			key.WithHelp("v", "split/combined"),
 		),
 	}
 }

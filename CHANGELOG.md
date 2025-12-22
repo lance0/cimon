@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### v0.6 Advanced Logs (In Progress)
+- **Syntax Highlighting**: Color-coded log lines for errors (red), warnings (yellow), commands (cyan), and groups (bold) (`H` to toggle)
+- **Log Export**: Save current log view to timestamped file with metadata header (`s` key)
+
 #### v0.5 Enhanced UX
 - **Workflow History**: Browse 10+ recent runs with pagination (`h`/`l` keys)
 - **Branch Filtering**: Select and switch between branches (`b` key)

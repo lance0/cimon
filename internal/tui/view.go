@@ -668,10 +668,13 @@ func (m Model) viewLogViewer() string {
 	b.WriteString(m.viewHeader())
 	b.WriteString("\n")
 
-	// Title with streaming indicator
+	// Title with mode indicators
 	b.WriteString("Job Logs")
 	if m.logStreaming {
 		b.WriteString(m.styles.Watching.Render(" [LIVE]"))
+	}
+	if m.logSyntaxEnabled {
+		b.WriteString(m.styles.Branch.Render(" [SYNTAX]"))
 	}
 	b.WriteString("\n\n")
 
@@ -706,7 +709,15 @@ func (m Model) viewLogViewer() string {
 		for i := start; i < end; i++ {
 			line := lines[i]
 
-			// Highlight search matches
+			// Truncate long lines to fit width first
+			if len(line) > m.width-4 {
+				line = line[:m.width-7] + "..."
+			}
+
+			// Apply syntax highlighting (v0.6)
+			line = m.viewLogLine(line)
+
+			// Highlight search matches (overlay on top of syntax highlighting)
 			if m.logSearchTerm != "" {
 				lowerLine := strings.ToLower(line)
 				lowerTerm := strings.ToLower(m.logSearchTerm)
@@ -716,10 +727,6 @@ func (m Model) viewLogViewer() string {
 				}
 			}
 
-			// Truncate long lines to fit width
-			if len(line) > m.width-4 {
-				line = line[:m.width-7] + "..."
-			}
 			b.WriteString(line)
 			b.WriteString("\n")
 		}
@@ -751,6 +758,12 @@ func (m Model) viewLogViewer() string {
 
 		if len(statusParts) > 0 {
 			b.WriteString(fmt.Sprintf("\n[%s]", strings.Join(statusParts, " | ")))
+		}
+
+		// Show export message (v0.6) - auto-clear after 3 seconds
+		if m.logExportMessage != "" && time.Since(m.logExportTime) < 3*time.Second {
+			b.WriteString("\n")
+			b.WriteString(m.styles.StatusSuccess.Render(m.logExportMessage))
 		}
 	}
 
@@ -880,4 +893,57 @@ func (m Model) viewWorkflowViewer() string {
 	b.WriteString(m.viewFooter())
 
 	return b.String()
+}
+
+// viewLogLine applies syntax highlighting to a log line (v0.6)
+func (m Model) viewLogLine(line string) string {
+	if !m.logSyntaxEnabled {
+		return line
+	}
+
+	// GitHub Actions error/warning markers
+	if strings.Contains(line, "##[error]") {
+		return m.styles.LogError.Render(line)
+	}
+	if strings.Contains(line, "##[warning]") {
+		return m.styles.LogWarning.Render(line)
+	}
+
+	// Group markers
+	if strings.HasPrefix(line, "##[group]") || strings.HasPrefix(line, "##[endgroup]") {
+		return m.styles.LogGroup.Render(line)
+	}
+
+	// Common error patterns
+	lowerLine := strings.ToLower(line)
+	if strings.Contains(lowerLine, "error:") ||
+		strings.Contains(lowerLine, "fatal:") ||
+		strings.Contains(lowerLine, "failed:") ||
+		strings.Contains(lowerLine, "exception:") ||
+		strings.Contains(lowerLine, "panic:") {
+		return m.styles.LogError.Render(line)
+	}
+
+	// Common warning patterns
+	if strings.Contains(lowerLine, "warning:") ||
+		strings.Contains(lowerLine, "warn:") ||
+		strings.Contains(lowerLine, "deprecated:") {
+		return m.styles.LogWarning.Render(line)
+	}
+
+	// Command execution patterns
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "Run ") ||
+		strings.HasPrefix(trimmed, "+ ") ||
+		strings.HasPrefix(trimmed, "$ ") ||
+		strings.HasPrefix(trimmed, "> ") {
+		return m.styles.LogCommand.Render(line)
+	}
+
+	// Timestamp at start of line (e.g., "2024-01-15T12:34:56.789Z")
+	if len(line) >= 24 && line[4] == '-' && line[7] == '-' && line[10] == 'T' {
+		return m.styles.LogTimestamp.Render(line[:24]) + line[24:]
+	}
+
+	return line
 }

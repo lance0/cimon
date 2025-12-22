@@ -65,6 +65,17 @@ type Styles struct {
 
 	// Watch indicator
 	Watching lipgloss.Style
+
+	// Log syntax highlighting (v0.6)
+	LogError     lipgloss.Style
+	LogWarning   lipgloss.Style
+	LogCommand   lipgloss.Style
+	LogGroup     lipgloss.Style
+	LogTimestamp lipgloss.Style
+
+	// Diff styles (v0.6)
+	DiffAdded   lipgloss.Style
+	DiffRemoved lipgloss.Style
 }
 
 // DefaultStyles returns the default style set
@@ -109,6 +120,17 @@ func DefaultStyles(colorEnabled bool) *Styles {
 
 			// Watch
 			Watching: lipgloss.NewStyle(),
+
+			// Log syntax (no color)
+			LogError:     lipgloss.NewStyle(),
+			LogWarning:   lipgloss.NewStyle(),
+			LogCommand:   lipgloss.NewStyle(),
+			LogGroup:     lipgloss.NewStyle().Bold(true),
+			LogTimestamp: lipgloss.NewStyle(),
+
+			// Diff (no color)
+			DiffAdded:   lipgloss.NewStyle(),
+			DiffRemoved: lipgloss.NewStyle(),
 		}
 	}
 
@@ -151,6 +173,17 @@ func DefaultStyles(colorEnabled bool) *Styles {
 
 		// Watch
 		Watching: lipgloss.NewStyle().Foreground(ColorYellow),
+
+		// Log syntax highlighting
+		LogError:     lipgloss.NewStyle().Foreground(ColorRed),
+		LogWarning:   lipgloss.NewStyle().Foreground(ColorYellow),
+		LogCommand:   lipgloss.NewStyle().Foreground(ColorCyan),
+		LogGroup:     lipgloss.NewStyle().Bold(true).Foreground(ColorWhite),
+		LogTimestamp: lipgloss.NewStyle().Foreground(ColorDim),
+
+		// Diff styles
+		DiffAdded:   lipgloss.NewStyle().Foreground(ColorGreen),
+		DiffRemoved: lipgloss.NewStyle().Foreground(ColorRed),
 	}
 }
 

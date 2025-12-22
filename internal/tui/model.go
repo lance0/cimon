@@ -75,6 +75,9 @@ type Model struct {
 	logStreaming      bool
 	searchInputMode   bool   // true when typing search term
 	searchInputBuffer string // buffer for search input
+	logSyntaxEnabled  bool   // v0.6: syntax highlighting on/off
+	logExportMessage  string // v0.6: export success/error message
+	logExportTime     time.Time // v0.6: when message was set (for auto-clear)
 
 	// Workflow viewer state
 	workflowContent      string
@@ -164,6 +167,12 @@ type ArtifactDownloadedMsg struct {
 	Filename string
 }
 
+// LogExportedMsg is sent when logs are exported to file (v0.6)
+type LogExportedMsg struct {
+	Filename string
+	Error    error
+}
+
 // ErrMsg is sent when an error occurs
 type ErrMsg struct {
 	Err error
@@ -194,6 +203,7 @@ func NewModel(cfg *config.Config, client *gh.Client) Model {
 		keys:                DefaultKeyMap(),
 		spinner:             s,
 		watching:            cfg.Watch,
+		logSyntaxEnabled:    true, // v0.6: syntax highlighting on by default
 	}
 }
 
@@ -311,6 +321,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ArtifactDownloadedMsg:
 		// Show success message and return to previous state
 		m.state = StateReady
+		return m, nil
+
+	case LogExportedMsg:
+		// v0.6: Handle log export result
+		if msg.Error != nil {
+			m.logExportMessage = fmt.Sprintf("Export failed: %v", msg.Error)
+		} else {
+			m.logExportMessage = fmt.Sprintf("Saved to %s", msg.Filename)
+		}
+		m.logExportTime = time.Now()
 		return m, nil
 
 	case TickMsg:
@@ -643,6 +663,20 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case key.Matches(msg, m.keys.LogHighlight):
+		// v0.6: Toggle syntax highlighting in log viewer
+		if m.state == StateLogViewer {
+			m.logSyntaxEnabled = !m.logSyntaxEnabled
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.LogSave):
+		// v0.6: Export logs to file
+		if m.state == StateLogViewer && m.logContent != "" {
+			return m, m.exportCurrentLogs()
+		}
+		return m, nil
+
 	default:
 		return m, nil
 	}
@@ -751,6 +785,32 @@ func (m Model) downloadArtifact(artifact gh.Artifact) tea.Cmd {
 			return ErrMsg{Err: err}
 		}
 		return ArtifactDownloadedMsg{Filename: filename}
+	}
+}
+
+// exportCurrentLogs exports the current log content to a file (v0.6)
+func (m Model) exportCurrentLogs() tea.Cmd {
+	return func() tea.Msg {
+		// Generate filename: cimon-logs-REPO-RUNID-TIMESTAMP.txt
+		timestamp := time.Now().Format("20060102-150405")
+		filename := fmt.Sprintf("cimon-logs-%s-%d-%s.txt",
+			m.config.Repo, m.run.ID, timestamp)
+
+		// Build content with metadata header
+		var content strings.Builder
+		content.WriteString("# Cimon Log Export\n")
+		content.WriteString(fmt.Sprintf("# Repository: %s/%s\n", m.config.Owner, m.config.Repo))
+		content.WriteString(fmt.Sprintf("# Branch: %s\n", m.config.Branch))
+		if m.run != nil {
+			content.WriteString(fmt.Sprintf("# Run: #%d (ID: %d)\n", m.run.RunNumber, m.run.ID))
+		}
+		content.WriteString(fmt.Sprintf("# Job ID: %d\n", m.logJobID))
+		content.WriteString(fmt.Sprintf("# Exported: %s\n", time.Now().Format(time.RFC3339)))
+		content.WriteString("#\n\n")
+		content.WriteString(m.logContent)
+
+		err := os.WriteFile(filename, []byte(content.String()), 0644)
+		return LogExportedMsg{Filename: filename, Error: err}
 	}
 }
 
