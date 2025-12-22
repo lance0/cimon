@@ -6,11 +6,31 @@ Terminal-first CI monitor for GitHub Actions. Check your workflow status without
 
 ## Features
 
-- **Zero friction** - Run inside any git repo and it just works
-- **Fast feedback** - See latest run status and job breakdown instantly
-- **Watch mode** - Poll until completion with `-w`
-- **Great terminal UX** - Clean TUI with keyboard navigation
-- **Scriptable** - Exit codes reflect CI status (0=pass, 1=fail)
+### Core Monitoring
+- **Zero friction** - Run inside any git repo and auto-detect repository/branch
+- **Fast feedback** - See workflow runs, jobs, and status instantly
+- **Watch mode** - Poll until completion with real-time updates (`-w`)
+- **Multi-run history** - Browse 10+ recent workflow runs with pagination
+- **Branch switching** - Monitor CI across different branches (`b` key)
+- **Status filtering** - Filter by success, failure, running, queued (`f` key)
+
+### Deep Inspection
+- **Job details** - Drill into individual jobs with step-by-step breakdown
+- **Live logs** - Stream logs from running jobs with automatic refresh
+- **Log search** - Find specific errors or messages within logs (`/` key)
+- **Interactive navigation** - Full keyboard-driven interface
+
+### Workflow Control
+- **Rerun workflows** - Restart failed builds with confirmation (`cimon retry`)
+- **Cancel runs** - Stop running workflows safely (`cimon cancel`)
+- **Trigger dispatches** - Start manual workflows (`cimon dispatch <workflow>`)
+
+### Developer Experience
+- **Great terminal UX** - Clean TUI with comprehensive keyboard shortcuts
+- **Scriptable** - JSON/plain output modes for automation
+- **Multiple output formats** - Human-readable, JSON, and plain text
+- **Cross-platform** - Works on Linux, macOS, and Windows
+- **Accessibility** - NO_COLOR support and clear visual feedback
 
 ## Installation
 

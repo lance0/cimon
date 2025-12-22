@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### v0.2 Job Details
+- Job selection with details pane (`enter` key)
+- Show job steps within selected job
+- Open individual job URLs in browser
+- Interactive job inspection with navigation
+- Job metadata display (runner, timing, status)
+
+#### v0.3 Logs
+- Log streaming for running jobs with real-time updates
+- Log viewer for completed jobs with scrollable interface
+- Search within logs (`/` key) with match navigation (`n`/`N`)
+- Log export and filtering capabilities
+- Syntax highlighting for log content
+
+#### v0.4 Workflow Actions
+- Rerun workflow (`cimon retry`) with confirmation prompts
+- Cancel running workflow (`cimon cancel`) safely
+- Trigger workflow dispatch (`cimon dispatch <workflow>`)
+- Interactive CLI commands with safety confirmations
+- GitHub API integration for workflow control
+
+#### v0.5 Enhanced UX (Partial)
+- Workflow history with pagination (10+ runs, `h`/`l` navigation)
+- Branch filtering and selection (`b` key)
+- Status filtering by workflow outcome (`f` key)
+- Enhanced keyboard shortcuts and navigation
+- Improved visual indicators and status display
+
+### Changed
+- Extended TUI with multiple interactive modes
+- Enhanced GitHub API integration with additional endpoints
+- Improved user experience with better navigation and feedback
+- Added comprehensive keyboard shortcuts for power users
+
+### Technical
+- Added workflow actions CLI subcommands
+- Implemented real-time log streaming
+- Added pagination support for workflow runs
+- Enhanced error handling and user feedback
+- Improved performance with API optimizations
+
 ## [0.1.0] - 2024-12-18
 
 ### Added
