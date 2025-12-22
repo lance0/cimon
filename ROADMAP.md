@@ -39,8 +39,8 @@
 
 - [x] Workflow history with pagination (beyond just latest run)
 - [x] Branch filtering and selection
-- [ ] Better error handling with retry logic
-- [ ] Loading states and progress indicators
+- [x] Better error handling with retry logic
+- [x] Loading states and progress indicators
 - [ ] Keyboard shortcuts help dialog (?)
 - [x] Filter workflows by status (success/failure/running)
 - [ ] View workflow YAML/files

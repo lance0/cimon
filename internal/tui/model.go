@@ -194,10 +194,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case RunsLoadedMsg:
 		m.runs = msg.Runs
 		if len(m.runs) > 0 {
-			m.run = &m.runs[m.selectedRunIndex] // Select the first (latest) run
+			// Ensure selectedRunIndex is valid
+			if m.selectedRunIndex >= len(m.runs) {
+				m.selectedRunIndex = 0
+			}
+			m.run = &m.runs[m.selectedRunIndex] // Select the current run
 			m.lastFetch = time.Now()
 			return m, m.fetchJobs()
 		}
+		// No runs found - still go to ready state but show message
+		m.run = nil
 		m.state = StateReady
 		return m, nil
 
@@ -217,6 +223,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case JobsLoadedMsg:
 		m.jobs = msg.Jobs
+		// Even if job fetching fails, we can still show the runs
+		// Jobs are optional - runs provide the main value
 		if m.watching {
 			m.state = StateWatching
 		} else {
@@ -284,9 +292,16 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case key.Matches(msg, m.keys.Refresh):
-		m.loadingMessage = "Refreshing workflow runs..."
-		m.state = StateLoading
-		return m, m.fetchWorkflowRuns()
+		if m.err != nil {
+			// If we have an error, retry the last operation
+			m.err = nil
+			m.state = StateLoading
+			return m, m.fetchWorkflowRuns()
+		} else {
+			// Normal refresh
+			m.state = StateLoading
+			return m, m.fetchWorkflowRuns()
+		}
 
 	case key.Matches(msg, m.keys.Watch):
 		m.watching = !m.watching

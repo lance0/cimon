@@ -47,12 +47,13 @@ func (m Model) viewError() string {
 	// Add hints based on error type
 	hint := m.getErrorHint()
 	if hint != "" {
-		b.WriteString(m.styles.ErrorHint.Render("  " + hint))
-		b.WriteString("\n")
+		b.WriteString(m.styles.ErrorHint.Render("  Suggestion: "))
+		b.WriteString(hint)
+		b.WriteString("\n\n")
 	}
 
-	b.WriteString("\n")
-	b.WriteString(m.viewFooter())
+	// Add recovery options
+	b.WriteString("  Press 'r' to retry or 'q' to quit\n")
 
 	return b.String()
 }
@@ -62,22 +63,34 @@ func (m Model) getErrorHint() string {
 		return ""
 	}
 
-	errStr := m.err.Error()
+	errStr := strings.ToLower(m.err.Error())
 
-	if strings.Contains(errStr, "authentication") || strings.Contains(errStr, "401") || strings.Contains(errStr, "403") {
-		return "Install gh and run 'gh auth login' or set GITHUB_TOKEN"
+	if strings.Contains(errStr, "authentication") || strings.Contains(errStr, "401") {
+		return "Run 'gh auth login' to authenticate with GitHub, or set GITHUB_TOKEN environment variable"
+	}
+	if strings.Contains(errStr, "403") || strings.Contains(errStr, "forbidden") {
+		return "Check that you have access to this repository and the correct permissions"
 	}
 	if strings.Contains(errStr, "not found") || strings.Contains(errStr, "404") {
-		return "Check that the repository exists and you have access"
+		return "Verify the repository exists and the branch name is correct"
 	}
-	if strings.Contains(errStr, "rate limit") || strings.Contains(errStr, "429") {
-		return "Rate limited - wait a moment and try again"
+	if strings.Contains(errStr, "rate limit") || strings.Contains(errStr, "429") || strings.Contains(errStr, "too many requests") {
+		return "GitHub API rate limit exceeded - wait a few minutes before retrying"
+	}
+	if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "connection") {
+		return "Network connectivity issue - check your internet connection and try again"
+	}
+	if strings.Contains(errStr, "502") || strings.Contains(errStr, "503") || strings.Contains(errStr, "504") {
+		return "GitHub servers are temporarily unavailable - try again in a moment"
 	}
 	if strings.Contains(errStr, "no workflow runs") {
-		return "No CI runs found for this branch - push a commit to trigger a workflow"
+		return "No CI runs found - push a commit or check that workflows are configured for this branch"
+	}
+	if strings.Contains(errStr, "detached head") {
+		return "Currently in detached HEAD state - checkout a branch or use --branch flag"
 	}
 
-	return ""
+	return "Press 'r' to retry the operation or check your configuration"
 }
 
 func (m Model) viewReady() string {
@@ -101,7 +114,11 @@ func (m Model) viewReady() string {
 	if len(m.jobs) > 0 {
 		b.WriteString(m.viewJobs())
 	} else if m.run != nil {
-		b.WriteString("\n  No jobs found\n")
+		b.WriteString("\n  No jobs available\n")
+	} else if len(m.runs) > 0 {
+		b.WriteString("\n  Run history available - use h/l to navigate\n")
+	} else {
+		b.WriteString("\n  No workflow data available\n")
 	}
 
 	// Footer

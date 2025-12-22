@@ -38,29 +38,35 @@ func NewClient() (*Client, error) {
 	return &Client{rest: rest}, nil
 }
 
-// Get performs a GET request to the GitHub API
+// Get performs a GET request to the GitHub API with retry logic
 func (c *Client) Get(path string, response interface{}) error {
-	err := c.rest.Get(path, response)
-	if err != nil {
-		return c.wrapError(err)
-	}
-	return nil
+	config := DefaultRetryConfig()
+	return RetryWithBackoff(func() error {
+		err := c.rest.Get(path, response)
+		if err != nil {
+			return c.wrapError(err)
+		}
+		return nil
+	}, config)
 }
 
-// Post performs a POST request to the GitHub API
+// Post performs a POST request to the GitHub API with retry logic
 func (c *Client) Post(path string, payload interface{}) error {
-	var body bytes.Buffer
-	if payload != nil {
-		if err := json.NewEncoder(&body).Encode(payload); err != nil {
-			return fmt.Errorf("failed to encode payload: %w", err)
+	config := DefaultRetryConfig()
+	return RetryWithBackoff(func() error {
+		var body bytes.Buffer
+		if payload != nil {
+			if err := json.NewEncoder(&body).Encode(payload); err != nil {
+				return fmt.Errorf("failed to encode payload: %w", err)
+			}
 		}
-	}
 
-	err := c.rest.Post(path, &body, nil)
-	if err != nil {
-		return c.wrapError(err)
-	}
-	return nil
+		err := c.rest.Post(path, &body, nil)
+		if err != nil {
+			return c.wrapError(err)
+		}
+		return nil
+	}, config)
 }
 
 // GetRepository fetches repository information from GitHub API
@@ -78,7 +84,7 @@ func (c *Client) GetRepository(owner, repo string) (*Repository, error) {
 	return &repository, nil
 }
 
-// wrapError converts API errors to our custom error types
+// wrapError converts API errors to our custom error types with retry logic
 func (c *Client) wrapError(err error) error {
 	if err == nil {
 		return nil
@@ -87,16 +93,32 @@ func (c *Client) wrapError(err error) error {
 	errStr := err.Error()
 
 	// Check for HTTP status codes in error message
-	if strings.Contains(errStr, "401") || strings.Contains(errStr, "403") {
-		return &AuthError{Err: err}
+	if strings.Contains(errStr, "401") {
+		return &AuthError{Err: fmt.Errorf("authentication failed: please check your GitHub token or run 'gh auth login': %w", err)}
+	}
+
+	if strings.Contains(errStr, "403") {
+		if strings.Contains(errStr, "rate limit") {
+			return &RateLimitError{Err: fmt.Errorf("rate limit exceeded: please wait before retrying: %w", err)}
+		}
+		return &AuthError{Err: fmt.Errorf("access forbidden: please check repository permissions: %w", err)}
 	}
 
 	if strings.Contains(errStr, "404") {
-		return &NotFoundError{Resource: "resource", Err: err}
+		return &NotFoundError{Resource: "resource", Err: fmt.Errorf("resource not found: please check repository and branch names: %w", err)}
 	}
 
-	if strings.Contains(errStr, "429") || strings.Contains(errStr, "rate limit") {
-		return &RateLimitError{Err: err}
+	if strings.Contains(errStr, "429") {
+		return &RateLimitError{Err: fmt.Errorf("too many requests: GitHub API rate limit exceeded: %w", err)}
+	}
+
+	// Network and server errors that should be retried
+	if strings.Contains(errStr, "502") || strings.Contains(errStr, "503") || strings.Contains(errStr, "504") {
+		return fmt.Errorf("server error (will retry): %w", err)
+	}
+
+	if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "connection") {
+		return fmt.Errorf("network error (will retry): %w", err)
 	}
 
 	return err
