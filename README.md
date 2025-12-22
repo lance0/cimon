@@ -10,6 +10,7 @@ Terminal-first CI monitor for GitHub Actions. Check your workflow status without
 - **Zero friction** - Run inside any git repo and auto-detect repository/branch
 - **Fast feedback** - See workflow runs, jobs, and status instantly
 - **Watch mode** - Poll until completion with real-time updates (`-w`)
+- **Multi-repo dashboard** - Monitor multiple repos in one view (`--repos` or `cimon.yml`)
 - **Multi-run history** - Browse 10+ recent workflow runs with pagination
 - **Branch switching** - Monitor CI across different branches (`b` key)
 - **Status filtering** - Filter by success, failure, running, queued (`f` key)
@@ -58,7 +59,23 @@ cimon --watch
 
 # Override repo detection
 cimon --repo owner/name --branch main
+
+# Monitor multiple repos
+cimon --repos owner/repo1,owner/repo2,owner/repo3
 ```
+
+### Multi-Repo Configuration
+
+Create a `cimon.yml` file in your project root for persistent multi-repo monitoring:
+
+```yaml
+repositories:
+  - owner/repo1
+  - owner/repo2
+  - owner/repo3
+```
+
+Then just run `cimon` to monitor all configured repos in a single dashboard.
 
 ### Keyboard Shortcuts
 
@@ -91,6 +108,7 @@ cimon --repo owner/name --branch main
 ```
 -b, --branch string   Branch name
 -r, --repo string     Repository in owner/name format
+    --repos string    Comma-separated repos for multi-repo mode
 -w, --watch           Watch mode - poll until completion
 -p, --poll duration   Poll interval for watch mode (default 5s)
     --notify          Desktop notification on completion (watch mode)

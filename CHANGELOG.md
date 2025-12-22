@@ -71,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Retry Logic**: Automatic recovery from transient API failures
 
 ### Fixed
+- **Job Details Navigation**: Fixed up arrow key not working in Job Details view (only down worked)
 - **Navigation Bug**: Fixed down key moving cursor in wrong direction in job list
 - **Log Search**: Implemented missing search input handler (`/` key now works)
 - **Error Messages**: Fixed incorrect error variable being displayed in detached HEAD handling
