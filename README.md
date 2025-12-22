@@ -47,6 +47,7 @@ cimon --repo owner/name --branch main
 | `r` | Refresh |
 | `w` | Toggle watch mode |
 | `o` | Open run/job in browser |
+| `h/l` or `←/→` | Navigate between runs |
 | `j/k` or `↑/↓` | Navigate jobs/steps/logs |
 | `enter` | Show job details |
 | `l` | View/exit job logs |

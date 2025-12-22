@@ -15,6 +15,8 @@ type KeyMap struct {
 	Search    key.Binding
 	NextMatch key.Binding
 	PrevMatch key.Binding
+	NextRun   key.Binding
+	PrevRun   key.Binding
 	Help      key.Binding
 }
 
@@ -64,6 +66,14 @@ func DefaultKeyMap() KeyMap {
 		PrevMatch: key.NewBinding(
 			key.WithKeys("N"),
 			key.WithHelp("N", "prev match"),
+		),
+		NextRun: key.NewBinding(
+			key.WithKeys("l", "right"),
+			key.WithHelp("l/→", "next run"),
+		),
+		PrevRun: key.NewBinding(
+			key.WithKeys("h", "left"),
+			key.WithHelp("h/←", "prev run"),
 		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),

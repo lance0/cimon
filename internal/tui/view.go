@@ -111,6 +111,12 @@ func (m Model) viewHeader() string {
 	b.WriteString(m.styles.Separator.Render(" • "))
 	b.WriteString(m.styles.Branch.Render(m.config.Branch))
 
+	// Show run navigation info if we have multiple runs
+	if len(m.runs) > 1 {
+		runInfo := fmt.Sprintf(" [%d/%d]", m.selectedRunIndex+1, len(m.runs))
+		b.WriteString(m.styles.Separator.Render(runInfo))
+	}
+
 	if m.watching {
 		b.WriteString("  ")
 		b.WriteString(m.styles.Watching.Render("◉ Watching"))
@@ -200,6 +206,9 @@ func (m Model) viewFooter() string {
 		} else {
 			bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.Search, m.keys.Logs, m.keys.Quit}
 		}
+	} else if len(m.jobs) > 0 && !m.showingJobDetails && len(m.runs) > 1 {
+		// Show run navigation, Enter and Logs keys when multiple runs available
+		bindings = []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.PrevRun, m.keys.NextRun, m.keys.Enter, m.keys.Logs, m.keys.Quit}
 	} else if len(m.jobs) > 0 && !m.showingJobDetails {
 		// Show Enter and Logs keys when jobs are available and not in details mode
 		bindings = m.keys.ShortHelpWithLogs()

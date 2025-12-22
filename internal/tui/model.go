@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
@@ -38,8 +39,12 @@ type Model struct {
 	state State
 
 	// Data
-	run  *gh.WorkflowRun
+	runs []gh.WorkflowRun // All workflow runs (for history)
+	run  *gh.WorkflowRun  // Currently selected run
 	jobs []gh.Job
+
+	// Navigation state
+	selectedRunIndex int // Index of currently selected run in runs slice
 
 	// Job details state
 	showingJobDetails bool
@@ -107,6 +112,11 @@ type LogUpdatedMsg struct {
 	Content string
 }
 
+// RunsLoadedMsg is sent when multiple workflow runs are loaded
+type RunsLoadedMsg struct {
+	Runs []gh.WorkflowRun
+}
+
 // ErrMsg is sent when an error occurs
 type ErrMsg struct {
 	Err error
@@ -126,13 +136,14 @@ func NewModel(cfg *config.Config, client *gh.Client) Model {
 	colorEnabled := os.Getenv("NO_COLOR") == "" && !cfg.NoColor
 
 	return Model{
-		config:   cfg,
-		client:   client,
-		state:    StateLoading,
-		styles:   DefaultStyles(colorEnabled),
-		keys:     DefaultKeyMap(),
-		spinner:  s,
-		watching: cfg.Watch,
+		config:           cfg,
+		client:           client,
+		state:            StateLoading,
+		selectedRunIndex: 0, // Start with the first (latest) run
+		styles:           DefaultStyles(colorEnabled),
+		keys:             DefaultKeyMap(),
+		spinner:          s,
+		watching:         cfg.Watch,
 	}
 }
 
@@ -140,7 +151,7 @@ func NewModel(cfg *config.Config, client *gh.Client) Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
-		m.fetchLatestRun(),
+		m.fetchWorkflowRuns(),
 	)
 }
 
@@ -159,6 +170,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
+
+	case RunsLoadedMsg:
+		m.runs = msg.Runs
+		if len(m.runs) > 0 {
+			m.run = &m.runs[m.selectedRunIndex] // Select the first (latest) run
+			m.lastFetch = time.Now()
+			return m, m.fetchJobs()
+		}
+		m.state = StateReady
+		return m, nil
 
 	case RunLoadedMsg:
 		m.run = msg.Run
@@ -216,7 +237,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.state == StateLogViewer && m.logStreaming {
 			return m, m.updateLogs(m.logJobID)
 		} else if m.watching {
-			return m, m.fetchLatestRun()
+			return m, m.fetchWorkflowRuns()
 		}
 		return m, nil
 
@@ -237,7 +258,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.Refresh):
 		m.state = StateLoading
-		return m, m.fetchLatestRun()
+		return m, m.fetchWorkflowRuns()
 
 	case key.Matches(msg, m.keys.Watch):
 		m.watching = !m.watching
@@ -361,6 +382,28 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, nil
+
+	case key.Matches(msg, m.keys.NextRun):
+		if !m.showingJobDetails && !m.showingLogs && len(m.runs) > 1 {
+			if m.selectedRunIndex < len(m.runs)-1 {
+				m.selectedRunIndex++
+				m.run = &m.runs[m.selectedRunIndex]
+				m.cursor = 0 // Reset job cursor
+				return m, m.fetchJobs()
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.PrevRun):
+		if !m.showingJobDetails && !m.showingLogs && len(m.runs) > 1 {
+			if m.selectedRunIndex > 0 {
+				m.selectedRunIndex--
+				m.run = &m.runs[m.selectedRunIndex]
+				m.cursor = 0 // Reset job cursor
+				return m, m.fetchJobs()
+			}
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -368,13 +411,18 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // Commands
 
-func (m Model) fetchLatestRun() tea.Cmd {
+func (m Model) fetchWorkflowRuns() tea.Cmd {
 	return func() tea.Msg {
-		run, err := m.client.FetchLatestRun(m.config.Owner, m.config.Repo, m.config.Branch)
+		runs, err := m.client.FetchWorkflowRuns(m.config.Owner, m.config.Repo, m.config.Branch, "", 1, 10) // Fetch 10 most recent runs
 		if err != nil {
 			return ErrMsg{Err: err}
 		}
-		return RunLoadedMsg{Run: run}
+
+		if len(runs) == 0 {
+			return ErrMsg{Err: fmt.Errorf("no workflow runs found")}
+		}
+
+		return RunsLoadedMsg{Runs: runs}
 	}
 }
 
