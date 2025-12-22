@@ -9,73 +9,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-#### v0.2 Job Details
-- Job selection with details pane (`enter` key)
-- Show job steps within selected job
-- Open individual job URLs in browser
-- Interactive job inspection with navigation
-- Job metadata display (runner, timing, status)
-
-#### v0.3 Logs
-- Log streaming for running jobs with real-time updates
-- Log viewer for completed jobs with scrollable interface
-- Search within logs (`/` key) with match navigation (`n`/`N`)
-- Log export and filtering capabilities
-- Syntax highlighting for log content
+#### v0.5 Enhanced UX
+- **Workflow History**: Browse 10+ recent runs with pagination (`h`/`l` keys)
+- **Branch Filtering**: Select and switch between branches (`b` key)
+- **Status Filtering**: Filter runs by success/failure/in-progress status (`f` key)
+- **Help Dialog**: Comprehensive keyboard shortcuts reference (`?` key)
+- **Workflow YAML Viewer**: View CI configuration files (`y` key)
+- **Artifact Downloads**: Download build artifacts from workflow runs (`a` key)
+- **Enhanced Loading States**: Contextual progress messages throughout UI
+- **Improved Error Handling**: Automatic retry logic with actionable suggestions
+- **Better Visual Indicators**: Enhanced status display and navigation feedback
 
 #### v0.4 Workflow Actions
-- Rerun workflow (`cimon retry`) with confirmation prompts
-- Cancel running workflow (`cimon cancel`) safely
-- Trigger workflow dispatch (`cimon dispatch <workflow>`)
-- Interactive CLI commands with safety confirmations
-- GitHub API integration for workflow control
+- **Workflow Rerun**: Restart failed workflows with confirmation (`cimon retry`)
+- **Workflow Cancellation**: Safely cancel running workflows (`cimon cancel`)
+- **Workflow Dispatch**: Trigger manual workflows (`cimon dispatch <workflow>`)
+- **Safety Confirmations**: Interactive prompts for destructive operations
 
-#### v0.5 Enhanced UX
-- Workflow history with pagination (10+ runs, `h`/`l` navigation)
-- Branch filtering and selection (`b` key)
-- Status filtering by workflow outcome (`f` key)
- - Keyboard shortcuts help dialog (`?` key)
- - View workflow YAML configuration files (`y` key)
- - Download build artifacts from workflow runs (`a` key)
- - Enhanced loading states with contextual messages
- - Improved error handling with retry logic and suggestions
- - Better visual indicators and status display
+#### v0.3 Logs
+- **Live Log Streaming**: Real-time log updates for running jobs
+- **Log Viewer**: Scrollable interface for completed job logs
+- **Log Search**: Find specific content with match navigation (`/` `n` `N` keys)
+- **Log Export**: Save logs for external analysis
+
+#### v0.2 Job Details
+- **Job Selection**: Interactive job inspection with details pane (`enter` key)
+- **Step Breakdown**: View individual job steps and their status
+- **Job Metadata**: Display runner information, timing, and execution details
+- **Browser Integration**: Open jobs in GitHub with `o` key
 
 ### Changed
-- Extended TUI with multiple interactive modes
-- Enhanced GitHub API integration with additional endpoints
-- Improved user experience with better navigation and feedback
-- Added comprehensive keyboard shortcuts for power users
+- **TUI Enhancements**: Multiple interactive modes with consistent navigation
+- **API Integration**: Extended GitHub API support with comprehensive error handling
+- **User Experience**: Streamlined workflows with keyboard shortcuts and visual feedback
+- **Performance**: Optimized API calls and improved response times
 
 ### Technical
-- Added workflow actions CLI subcommands
-- Implemented real-time log streaming
-- Added pagination support for workflow runs
-- Enhanced error handling and user feedback
-- Improved performance with API optimizations
+- **CLI Subcommands**: Added workflow control commands (`retry`, `cancel`, `dispatch`)
+- **Real-time Updates**: Implemented streaming for live job monitoring
+- **Pagination Support**: Efficient handling of large workflow histories
+- **Retry Logic**: Automatic recovery from transient API failures
 
 ## [0.1.0] - 2025-12-18
 
 ### Added
-
-- Initial release of Cimon - terminal-first CI monitor for GitHub Actions
-- Interactive TUI built with Bubble Tea
-- Auto-detection of repository and branch from git
-- Display latest workflow run with job breakdown
-- Status icons and color-coded output (success/failure/in-progress)
-- Watch mode (`-w`) that polls until run completion
-- Open workflow run in browser with `o` key
-- Keyboard navigation (`j`/`k` or arrows)
-- Manual refresh with `r` key
-- CLI flags:
-  - `--repo owner/name` to override repository
-  - `--branch name` to override branch
-  - `--watch` for watch mode
-  - `--poll duration` for custom poll interval
-  - `--version` to show version info
-- Exit codes based on workflow run status:
-  - `0` for success/neutral/skipped
-  - `1` for failure/cancelled/timed_out
-  - `2` for errors (auth, not found, etc.)
-- Authentication via `gh` CLI or `GITHUB_TOKEN` environment variable
-- Cross-platform support (Linux, macOS, Windows)
+- **Initial Release**: Terminal-first CI monitor for GitHub Actions
+- **Interactive TUI**: Built with Bubble Tea for smooth terminal experience
+- **Repository Detection**: Auto-detect repository and branch from git context
+- **Workflow Monitoring**: Display latest workflow run with job breakdown
+- **Visual Status**: Color-coded icons for success/failure/in-progress states
+- **Watch Mode**: Poll for updates until workflow completion (`-w` flag)
+- **Browser Integration**: Open workflow runs in GitHub (`o` key)
+- **Navigation**: Keyboard controls (`j`/`k` or arrow keys) for job selection
+- **Manual Refresh**: Force update workflow data (`r` key)
+- **Configuration Flags**:
+  - `--repo owner/name`: Override repository detection
+  - `--branch name`: Override branch detection
+  - `--poll duration`: Customize watch mode polling interval
+- **Exit Codes**: Status-based exit codes (0=success, 1=failure, 2=error)
+- **Authentication**: Support for `gh` CLI and `GITHUB_TOKEN` environment variable
+- **Cross-Platform**: Works on Linux, macOS, and Windows
