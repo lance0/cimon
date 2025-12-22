@@ -91,12 +91,11 @@ type Model struct {
 	logFilterIndex       int            // Current selection in filter menu
 
 	// Multi-job following state (v0.6)
-	multiJobMode       bool              // Whether we're in multi-job view mode
-	multiJobIDs        []int64           // Selected job IDs for multi-job view
-	multiJobContents   map[int64]string  // Log contents for each job
-	multiJobViewSplit  bool              // true=split view, false=combined view
-	multiJobSelectMode bool              // Currently selecting jobs
-	multiJobSelectIdx  int               // Selection cursor for job selection
+	multiJobMode      bool             // Whether we're in multi-job view mode
+	multiJobIDs       []int64          // Selected job IDs for multi-job view
+	multiJobContents  map[int64]string // Log contents for each job
+	multiJobViewSplit bool             // true=split view, false=combined view
+	multiJobSelectIdx int              // Selection cursor for job selection
 
 	// Log comparison state (v0.6)
 	compareRunIdx1    int      // First run index for comparison
@@ -1066,17 +1065,6 @@ func (m Model) fetchMultiRepoRuns() tea.Cmd {
 	}
 }
 
-func (m Model) fetchBranches() tea.Cmd {
-	return func() tea.Msg {
-		branches, err := m.client.FetchBranches(m.config.Owner, m.config.Repo)
-		if err != nil {
-			return ErrMsg{Err: err}
-		}
-
-		return BranchesLoadedMsg{Branches: branches}
-	}
-}
-
 func (m Model) fetchJobs() tea.Cmd {
 	return func() tea.Msg {
 		if m.run == nil {
@@ -1299,9 +1287,9 @@ func (m *Model) buildMultiJobContent() string {
 			jobName = fmt.Sprintf("Job %d", jobID)
 		}
 
-		b.WriteString(fmt.Sprintf("\n══════════════════════════════════════════════════════════════════════════════\n"))
+		b.WriteString("\n══════════════════════════════════════════════════════════════════════════════\n")
 		b.WriteString(fmt.Sprintf("  JOB: %s\n", jobName))
-		b.WriteString(fmt.Sprintf("══════════════════════════════════════════════════════════════════════════════\n\n"))
+		b.WriteString("══════════════════════════════════════════════════════════════════════════════\n\n")
 		b.WriteString(content)
 		b.WriteString("\n")
 	}

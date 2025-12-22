@@ -209,25 +209,25 @@ func (c *Client) DownloadArtifact(owner, repo string, artifactID int64, filename
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tempFileName := tempFile.Name()
-	defer os.Remove(tempFileName) // Clean up temp file on error
+	defer func() { _ = os.Remove(tempFileName) }() // Clean up temp file on error
 
 	// Download the artifact
 	resp, err := c.getRawResponse(path)
 	if err != nil {
-		tempFile.Close()
+		_ = tempFile.Close()
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		tempFile.Close()
+		_ = tempFile.Close()
 		return fmt.Errorf("download failed with status: %s", resp.Status)
 	}
 
 	// Copy the response body to temp file
 	_, err = io.Copy(tempFile, resp.Body)
 	if err != nil {
-		tempFile.Close()
+		_ = tempFile.Close()
 		return fmt.Errorf("failed to download artifact: %w", err)
 	}
 

@@ -60,7 +60,7 @@ func (c *Client) FetchJobLogs(owner, repo string, jobID int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Follow the redirect to get the ZIP file
 	if resp.StatusCode == http.StatusFound {
@@ -74,7 +74,7 @@ func (c *Client) FetchJobLogs(owner, repo string, jobID int64) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to download logs ZIP: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			return "", fmt.Errorf("failed to download logs ZIP: status %d", resp.StatusCode)
@@ -165,7 +165,7 @@ func extractLogsFromZIPStructured(zipData []byte) (*ParsedLogs, error) {
 
 		// Read the file content
 		content, err := io.ReadAll(rc)
-		rc.Close()
+		_ = rc.Close()
 		if err != nil {
 			continue // Skip files we can't read
 		}
@@ -237,7 +237,7 @@ func (c *Client) FetchJobLogsStructured(owner, repo string, jobID int64) (*Parse
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Follow the redirect to get the ZIP file
 	if resp.StatusCode == http.StatusFound {
@@ -251,7 +251,7 @@ func (c *Client) FetchJobLogsStructured(owner, repo string, jobID int64) (*Parse
 		if err != nil {
 			return nil, fmt.Errorf("failed to download logs ZIP: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("failed to download logs ZIP: status %d", resp.StatusCode)

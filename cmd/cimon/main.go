@@ -536,7 +536,7 @@ func parseSubcommandFlags(args []string, command string) (*config.Config, error)
 func getConfirmation() bool {
 	fmt.Print("Confirm? (y/N): ")
 	var response string
-	fmt.Scanln(&response)
+	_, _ = fmt.Scanln(&response) // Ignore error - empty input is valid (defaults to "N")
 	response = strings.ToLower(strings.TrimSpace(response))
 	return response == "y" || response == "yes"
 }

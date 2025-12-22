@@ -49,7 +49,7 @@ func GetRemoteURL(gitDir string) (string, error) {
 	if err != nil {
 		return "", ErrNotGitRepo
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	return parseGitConfig(file)
 }
