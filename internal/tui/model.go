@@ -47,11 +47,15 @@ type Model struct {
 	jobDetailsCursor  int
 
 	// Log viewer state
-	showingLogs     bool
-	logContent      string
-	logScrollOffset int
-	logSearchTerm   string
-	logSearchIndex  int
+	showingLogs      bool
+	logContent       string
+	logScrollOffset  int
+	logSearchTerm    string
+	logSearchMatches []int // line numbers with matches
+	logSearchIndex   int   // current match index
+	logJobID         int64
+	logLastFetch     time.Time
+	logStreaming     bool
 
 	// UI state
 	cursor    int
@@ -95,6 +99,11 @@ type JobDetailsLoadedMsg struct {
 
 // LogLoadedMsg is sent when job logs are loaded
 type LogLoadedMsg struct {
+	Content string
+}
+
+// LogUpdatedMsg is sent when logs are updated during streaming
+type LogUpdatedMsg struct {
 	Content string
 }
 
@@ -184,10 +193,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case LogLoadedMsg:
 		m.logContent = msg.Content
 		m.state = StateLogViewer
-		return m, nil
+		// Check if we should enable streaming (job might still be running)
+		return m, m.checkStreamingStatus()
+
+	case LogUpdatedMsg:
+		// Only update if content has changed
+		if msg.Content != m.logContent {
+			m.logContent = msg.Content
+			// Auto-scroll to bottom for streaming logs
+			if m.logStreaming {
+				lines := strings.Split(strings.TrimSuffix(m.logContent, "\n"), "\n")
+				maxLines := m.height - 8
+				if len(lines) > maxLines {
+					m.logScrollOffset = len(lines) - maxLines
+				}
+			}
+		}
+		// Continue streaming if job is still running
+		return m, m.scheduleLogUpdate()
 
 	case TickMsg:
-		if m.watching {
+		if m.state == StateLogViewer && m.logStreaming {
+			return m, m.updateLogs(m.logJobID)
+		} else if m.watching {
 			return m, m.fetchLatestRun()
 		}
 		return m, nil
@@ -280,6 +308,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.logScrollOffset = 0
 			m.logSearchTerm = ""
 			m.logSearchIndex = 0
+			m.logJobID = job.ID
+			m.logLastFetch = time.Now()
 			return m, m.fetchLogs(job.ID)
 		} else if m.state == StateJobDetails && m.selectedJob != nil {
 			// View logs for selected job in details view
@@ -287,6 +317,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.logScrollOffset = 0
 			m.logSearchTerm = ""
 			m.logSearchIndex = 0
+			m.logJobID = m.selectedJob.ID
+			m.logLastFetch = time.Now()
 			return m, m.fetchLogs(m.selectedJob.ID)
 		} else if m.state == StateLogViewer {
 			// Exit log viewer
@@ -295,11 +327,37 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.logScrollOffset = 0
 			m.logSearchTerm = ""
 			m.logSearchIndex = 0
+			m.logJobID = 0
+			m.logStreaming = false
 			if m.selectedJob != nil {
 				m.state = StateJobDetails
 			} else {
 				m.state = StateReady
 			}
+			return m, nil
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Search):
+		if m.state == StateLogViewer {
+			// For now, just set a demo search term
+			// In a real implementation, this would enter input mode
+			m.logSearchTerm = "error"
+			m.findSearchMatches()
+			return m, nil
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.NextMatch):
+		if m.state == StateLogViewer && len(m.logSearchMatches) > 0 {
+			m.nextSearchMatch()
+			return m, nil
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.PrevMatch):
+		if m.state == StateLogViewer && len(m.logSearchMatches) > 0 {
+			m.prevSearchMatch()
 			return m, nil
 		}
 		return m, nil
@@ -350,6 +408,86 @@ func (m Model) fetchLogs(jobID int64) tea.Cmd {
 			return ErrMsg{Err: err}
 		}
 		return LogLoadedMsg{Content: logs}
+	}
+}
+
+func (m Model) updateLogs(jobID int64) tea.Cmd {
+	return func() tea.Msg {
+		logs, err := m.client.FetchJobLogs(m.config.Owner, m.config.Repo, jobID)
+		if err != nil {
+			// Don't return error for streaming updates, just ignore
+			return LogUpdatedMsg{Content: m.logContent}
+		}
+		return LogUpdatedMsg{Content: logs}
+	}
+}
+
+func (m Model) checkStreamingStatus() tea.Cmd {
+	// Check if the current job is still running
+	for _, job := range m.jobs {
+		if job.ID == m.logJobID {
+			m.logStreaming = job.Status == gh.StatusInProgress || job.Status == gh.StatusQueued
+			if m.logStreaming {
+				return m.scheduleLogUpdate()
+			}
+			break
+		}
+	}
+	return nil
+}
+
+func (m Model) scheduleLogUpdate() tea.Cmd {
+	if !m.logStreaming {
+		return nil
+	}
+	// Update logs every 3 seconds for running jobs
+	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+		return TickMsg{Time: t}
+	})
+}
+
+func (m *Model) findSearchMatches() {
+	m.logSearchMatches = []int{}
+	if m.logSearchTerm == "" || m.logContent == "" {
+		return
+	}
+
+	lines := strings.Split(strings.TrimSuffix(m.logContent, "\n"), "\n")
+	for i, line := range lines {
+		if strings.Contains(strings.ToLower(line), strings.ToLower(m.logSearchTerm)) {
+			m.logSearchMatches = append(m.logSearchMatches, i)
+		}
+	}
+	m.logSearchIndex = 0
+}
+
+func (m *Model) nextSearchMatch() {
+	if len(m.logSearchMatches) == 0 {
+		return
+	}
+	m.logSearchIndex = (m.logSearchIndex + 1) % len(m.logSearchMatches)
+	lineNum := m.logSearchMatches[m.logSearchIndex]
+	m.scrollToLine(lineNum)
+}
+
+func (m *Model) prevSearchMatch() {
+	if len(m.logSearchMatches) == 0 {
+		return
+	}
+	m.logSearchIndex--
+	if m.logSearchIndex < 0 {
+		m.logSearchIndex = len(m.logSearchMatches) - 1
+	}
+	lineNum := m.logSearchMatches[m.logSearchIndex]
+	m.scrollToLine(lineNum)
+}
+
+func (m *Model) scrollToLine(lineNum int) {
+	maxLines := m.height - 10
+	if lineNum < m.logScrollOffset {
+		m.logScrollOffset = lineNum
+	} else if lineNum >= m.logScrollOffset+maxLines {
+		m.logScrollOffset = lineNum - maxLines + 1
 	}
 }
 

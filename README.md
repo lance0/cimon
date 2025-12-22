@@ -49,7 +49,10 @@ cimon --repo owner/name --branch main
 | `o` | Open run/job in browser |
 | `j/k` or `↑/↓` | Navigate jobs/steps/logs |
 | `enter` | Show job details |
-| `l` | View job logs |
+| `l` | View/exit job logs |
+| `/` | Search in logs |
+| `n` | Next search match |
+| `N` | Previous search match |
 | `q` | Quit |
 
 ### Flags

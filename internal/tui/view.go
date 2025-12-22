@@ -195,7 +195,11 @@ func (m Model) viewFooter() string {
 	var bindings []key.Binding
 	if m.state == StateLogViewer {
 		// In log viewer, show navigation and exit options
-		bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.Logs, m.keys.Quit}
+		if m.logSearchTerm != "" && len(m.logSearchMatches) > 0 {
+			bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.NextMatch, m.keys.PrevMatch, m.keys.Logs, m.keys.Quit}
+		} else {
+			bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.Search, m.keys.Logs, m.keys.Quit}
+		}
 	} else if len(m.jobs) > 0 && !m.showingJobDetails {
 		// Show Enter and Logs keys when jobs are available and not in details mode
 		bindings = m.keys.ShortHelpWithLogs()
@@ -486,7 +490,12 @@ func (m Model) viewLogViewer() string {
 	b.WriteString(m.viewHeader())
 	b.WriteString("\n")
 
-	b.WriteString("Job Logs\n\n")
+	// Title with streaming indicator
+	b.WriteString("Job Logs")
+	if m.logStreaming {
+		b.WriteString(m.styles.Watching.Render(" [LIVE]"))
+	}
+	b.WriteString("\n\n")
 
 	if m.logContent == "" {
 		b.WriteString("Loading logs...")
@@ -495,7 +504,7 @@ func (m Model) viewLogViewer() string {
 		lines := strings.Split(strings.TrimSuffix(m.logContent, "\n"), "\n")
 
 		// Calculate visible area (reserve space for header and footer)
-		maxLines := m.height - 8 // Approximate, adjust as needed
+		maxLines := m.height - 10 // Reserve more space for streaming indicator
 
 		// Ensure scroll offset is valid
 		if m.logScrollOffset < 0 {
@@ -514,6 +523,17 @@ func (m Model) viewLogViewer() string {
 
 		for i := start; i < end; i++ {
 			line := lines[i]
+
+			// Highlight search matches
+			if m.logSearchTerm != "" {
+				lowerLine := strings.ToLower(line)
+				lowerTerm := strings.ToLower(m.logSearchTerm)
+				if strings.Contains(lowerLine, lowerTerm) {
+					// Simple highlighting - could be improved
+					line = strings.ReplaceAll(line, m.logSearchTerm, m.styles.StatusFailure.Render(m.logSearchTerm))
+				}
+			}
+
 			// Truncate long lines to fit width
 			if len(line) > m.width-4 {
 				line = line[:m.width-7] + "..."
@@ -522,10 +542,28 @@ func (m Model) viewLogViewer() string {
 			b.WriteString("\n")
 		}
 
-		// Show scroll indicator if needed
+		// Show status information
+		var statusParts []string
+
 		if len(lines) > maxLines {
 			scrollPercent := float64(m.logScrollOffset) / float64(len(lines)-maxLines) * 100
-			b.WriteString(fmt.Sprintf("\n[Line %d/%d - %.0f%%]", m.logScrollOffset+1, len(lines), scrollPercent))
+			statusParts = append(statusParts, fmt.Sprintf("Line %d/%d (%.0f%%)", m.logScrollOffset+1, len(lines), scrollPercent))
+		}
+
+		if m.logStreaming {
+			statusParts = append(statusParts, "STREAMING")
+		}
+
+		if m.logSearchTerm != "" {
+			if len(m.logSearchMatches) > 0 {
+				statusParts = append(statusParts, fmt.Sprintf("Search: '%s' (%d/%d)", m.logSearchTerm, m.logSearchIndex+1, len(m.logSearchMatches)))
+			} else {
+				statusParts = append(statusParts, fmt.Sprintf("Search: '%s' (no matches)", m.logSearchTerm))
+			}
+		}
+
+		if len(statusParts) > 0 {
+			b.WriteString(fmt.Sprintf("\n[%s]", strings.Join(statusParts, " | ")))
 		}
 	}
 

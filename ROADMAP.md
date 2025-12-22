@@ -27,7 +27,7 @@
 
 - [x] Log streaming for running jobs
 - [x] Log viewer for completed jobs
-- [ ] Search within logs
+- [x] Search within logs
 
 ## v0.4 - Workflow Actions
 
