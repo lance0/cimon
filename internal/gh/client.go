@@ -2,8 +2,10 @@ package gh
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -130,6 +132,94 @@ func CheckHTTPError(err error, statusCode int) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), fmt.Sprintf("%d", statusCode))
+}
+
+// FetchWorkflowContent fetches the content of a workflow file
+func (c *Client) FetchWorkflowContent(owner, repo, path string) (string, error) {
+	encodedPath := url.PathEscape(path)
+	apiPath := fmt.Sprintf("repos/%s/%s/contents/%s",
+		url.PathEscape(owner),
+		url.PathEscape(repo),
+		encodedPath,
+	)
+
+	var content Content
+	if err := c.Get(apiPath, &content); err != nil {
+		return "", err
+	}
+
+	// Decode base64 content
+	if content.Encoding != "base64" {
+		return "", fmt.Errorf("unexpected content encoding: %s", content.Encoding)
+	}
+
+	// GitHub API returns base64 encoded content
+	decoded, err := base64.StdEncoding.DecodeString(content.Content)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode base64 content: %w", err)
+	}
+
+	return string(decoded), nil
+}
+
+// FetchWorkflowArtifacts fetches artifacts for a specific workflow run
+func (c *Client) FetchWorkflowArtifacts(owner, repo string, runID int64) ([]Artifact, error) {
+	path := fmt.Sprintf("repos/%s/%s/actions/runs/%d/artifacts",
+		url.PathEscape(owner),
+		url.PathEscape(repo),
+		runID,
+	)
+
+	var response ArtifactsResponse
+	if err := c.Get(path, &response); err != nil {
+		return nil, err
+	}
+
+	return response.Artifacts, nil
+}
+
+// DownloadArtifact downloads an artifact to the current directory
+func (c *Client) DownloadArtifact(owner, repo string, artifactID int64, filename string) error {
+	path := fmt.Sprintf("repos/%s/%s/actions/artifacts/%d/zip",
+		url.PathEscape(owner),
+		url.PathEscape(repo),
+		artifactID,
+	)
+
+	// Create a temporary file for download
+	tempFile, err := os.CreateTemp("", "cimon-artifact-*.zip")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer tempFile.Close()
+	defer os.Remove(tempFile.Name()) // Clean up temp file
+
+	// Download the artifact
+	resp, err := c.getRawResponse(path)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status: %s", resp.Status)
+	}
+
+	// Copy the response body to temp file
+	_, err = io.Copy(tempFile, resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to download artifact: %w", err)
+	}
+
+	// Close temp file before renaming
+	tempFile.Close()
+
+	// Move temp file to final destination
+	if err := os.Rename(tempFile.Name(), filename); err != nil {
+		return fmt.Errorf("failed to save artifact: %w", err)
+	}
+
+	return nil
 }
 
 // IsHTTPError checks if the error is an HTTP error

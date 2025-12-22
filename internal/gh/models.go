@@ -6,6 +6,7 @@ import "time"
 type WorkflowRun struct {
 	ID         int64     `json:"id"`
 	Name       string    `json:"name"`
+	Path       string    `json:"path"` // workflow file path, e.g. ".github/workflows/ci.yml"
 	RunNumber  int       `json:"run_number"`
 	Status     string    `json:"status"`     // queued, in_progress, completed
 	Conclusion *string   `json:"conclusion"` // success, failure, cancelled, skipped, timed_out, action_required
@@ -124,4 +125,38 @@ func (j *Job) Duration() time.Duration {
 // IsCompleted returns true if the job has completed
 func (j *Job) IsCompleted() bool {
 	return j.Status == StatusCompleted
+}
+
+// Content represents a file or directory from the GitHub Contents API
+type Content struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	SHA         string `json:"sha"`
+	Size        int    `json:"size"`
+	URL         string `json:"url"`
+	HTMLURL     string `json:"html_url"`
+	GitURL      string `json:"git_url"`
+	DownloadURL string `json:"download_url"`
+	Type        string `json:"type"`     // "file" or "dir"
+	Content     string `json:"content"`  // base64 encoded content (only for files)
+	Encoding    string `json:"encoding"` // "base64" for files
+}
+
+// Artifact represents a GitHub Actions artifact
+type Artifact struct {
+	ID                 int64     `json:"id"`
+	NodeID             string    `json:"node_id"`
+	Name               string    `json:"name"`
+	SizeInBytes        int64     `json:"size_in_bytes"`
+	URL                string    `json:"url"`
+	ArchiveDownloadURL string    `json:"archive_download_url"`
+	Expired            bool      `json:"expired"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+// ArtifactsResponse is the API response for listing artifacts
+type ArtifactsResponse struct {
+	TotalCount int        `json:"total_count"`
+	Artifacts  []Artifact `json:"artifacts"`
 }

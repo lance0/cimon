@@ -23,6 +23,12 @@ func (m Model) View() string {
 		return m.viewBranchSelection()
 	case StateStatusFilter:
 		return m.viewStatusFilter()
+	case StateHelp:
+		return m.viewHelp()
+	case StateWorkflowViewer:
+		return m.viewWorkflowViewer()
+	case StateArtifactSelection:
+		return m.viewArtifactSelection()
 	default:
 		return m.viewReady()
 	}
@@ -508,6 +514,41 @@ func (m Model) viewBranchSelection() string {
 		}
 	}
 
+	// Footer
+	b.WriteString("\n")
+	b.WriteString(m.viewFooter())
+
+	return b.String()
+}
+
+func (m Model) viewArtifactSelection() string {
+	var b strings.Builder
+
+	b.WriteString("Select Artifact to Download\n\n")
+
+	if len(m.artifacts) == 0 {
+		b.WriteString("  No artifacts available for this workflow run\n")
+	} else {
+		for i, artifact := range m.artifacts {
+			if i == m.selectedArtifactIndex {
+				b.WriteString(m.styles.Selected.Render("→ "))
+			} else {
+				b.WriteString("  ")
+			}
+
+			b.WriteString(artifact.Name)
+			b.WriteString(" (")
+			b.WriteString(fmt.Sprintf("%d bytes", artifact.SizeInBytes))
+			b.WriteString(")")
+
+			if artifact.Expired {
+				b.WriteString(" EXPIRED")
+			}
+
+			b.WriteString("\n")
+		}
+	}
+
 	b.WriteString("\n")
 	b.WriteString(m.viewFooter())
 
@@ -705,6 +746,127 @@ func (m Model) viewLogViewer() string {
 
 		if len(statusParts) > 0 {
 			b.WriteString(fmt.Sprintf("\n[%s]", strings.Join(statusParts, " | ")))
+		}
+	}
+
+	// Footer
+	b.WriteString("\n")
+	b.WriteString(m.viewFooter())
+
+	return b.String()
+}
+
+func (m Model) viewHelp() string {
+	var b strings.Builder
+
+	b.WriteString("Keyboard Shortcuts\n\n")
+
+	// Group shortcuts by category
+	sections := []struct {
+		title string
+		keys  []key.Binding
+	}{
+		{
+			title: "Navigation",
+			keys:  []key.Binding{m.keys.Up, m.keys.Down, m.keys.NextRun, m.keys.PrevRun},
+		},
+		{
+			title: "Actions",
+			keys:  []key.Binding{m.keys.Refresh, m.keys.Watch, m.keys.Open, m.keys.Enter},
+		},
+		{
+			title: "Filtering & Selection",
+			keys:  []key.Binding{m.keys.BranchSelect, m.keys.Filter, m.keys.Logs, m.keys.Search, m.keys.Workflow, m.keys.Artifacts},
+		},
+		{
+			title: "Search Navigation",
+			keys:  []key.Binding{m.keys.NextMatch, m.keys.PrevMatch},
+		},
+		{
+			title: "General",
+			keys:  []key.Binding{m.keys.Quit, m.keys.Help},
+		},
+	}
+
+	for _, section := range sections {
+		b.WriteString(m.styles.Bold.Render(section.title))
+		b.WriteString("\n")
+
+		for _, binding := range section.keys {
+			help := binding.Help()
+			if help.Key != "" {
+				b.WriteString("  ")
+				b.WriteString(m.styles.HelpKey.Render(help.Key))
+				b.WriteString("  ")
+				b.WriteString(help.Desc)
+				b.WriteString("\n")
+			}
+		}
+
+		b.WriteString("\n")
+	}
+
+	b.WriteString("Press any key to exit help\n")
+
+	return b.String()
+}
+
+func (m Model) viewWorkflowViewer() string {
+	var b strings.Builder
+
+	// Header
+	b.WriteString(m.viewHeader())
+	b.WriteString("\n")
+
+	// Title with file path
+	b.WriteString("Workflow Configuration")
+	b.WriteString("\n")
+	b.WriteString(m.styles.Dim.Render(m.workflowPath))
+	b.WriteString("\n\n")
+
+	if m.workflowContent == "" {
+		b.WriteString("  ")
+		b.WriteString(m.styles.Dim.Render("Loading workflow content"))
+		b.WriteString(" ")
+		b.WriteString(m.spinner.View())
+		b.WriteString("\n")
+	} else {
+		// Split workflow content into lines
+		lines := strings.Split(strings.TrimSuffix(m.workflowContent, "\n"), "\n")
+
+		// Calculate visible area (reserve space for header and footer)
+		maxLines := m.height - 10
+
+		// Ensure scroll offset is valid
+		if m.workflowScrollOffset < 0 {
+			m.workflowScrollOffset = 0
+		}
+		if m.workflowScrollOffset > len(lines)-maxLines && len(lines) > maxLines {
+			m.workflowScrollOffset = len(lines) - maxLines
+		}
+
+		// Display visible lines
+		start := m.workflowScrollOffset
+		end := start + maxLines
+		if end > len(lines) {
+			end = len(lines)
+		}
+
+		for i := start; i < end; i++ {
+			line := lines[i]
+
+			// Truncate long lines to fit width
+			if len(line) > m.width-4 {
+				line = line[:m.width-7] + "..."
+			}
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+
+		// Show scroll status
+		if len(lines) > maxLines {
+			scrollPercent := float64(m.workflowScrollOffset) / float64(len(lines)-maxLines) * 100
+			b.WriteString(fmt.Sprintf("\n[Line %d/%d (%.0f%%)]", m.workflowScrollOffset+1, len(lines), scrollPercent))
 		}
 	}
 

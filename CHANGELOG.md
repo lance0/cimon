@@ -30,12 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Interactive CLI commands with safety confirmations
 - GitHub API integration for workflow control
 
-#### v0.5 Enhanced UX (Partial)
+#### v0.5 Enhanced UX
 - Workflow history with pagination (10+ runs, `h`/`l` navigation)
 - Branch filtering and selection (`b` key)
 - Status filtering by workflow outcome (`f` key)
-- Enhanced keyboard shortcuts and navigation
-- Improved visual indicators and status display
+ - Keyboard shortcuts help dialog (`?` key)
+ - View workflow YAML configuration files (`y` key)
+ - Download build artifacts from workflow runs (`a` key)
+ - Enhanced loading states with contextual messages
+ - Improved error handling with retry logic and suggestions
+ - Better visual indicators and status display
 
 ### Changed
 - Extended TUI with multiple interactive modes

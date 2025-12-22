@@ -20,6 +20,8 @@ type KeyMap struct {
 	BranchSelect key.Binding
 	Filter       key.Binding
 	Help         key.Binding
+	Workflow     key.Binding
+	Artifacts    key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings
@@ -88,6 +90,14 @@ func DefaultKeyMap() KeyMap {
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "help"),
+		),
+		Workflow: key.NewBinding(
+			key.WithKeys("y"),
+			key.WithHelp("y", "view workflow"),
+		),
+		Artifacts: key.NewBinding(
+			key.WithKeys("a"),
+			key.WithHelp("a", "download artifacts"),
 		),
 	}
 }

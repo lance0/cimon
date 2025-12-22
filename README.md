@@ -76,6 +76,9 @@ cimon --repo owner/name --branch main
 | `/` | Search in logs |
 | `n` | Next search match |
 | `N` | Previous search match |
+| `y` | View workflow YAML |
+| `a` | Download artifacts |
+| `?` | Show help |
 | `q` | Quit |
 
 ### Flags

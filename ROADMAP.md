@@ -41,10 +41,10 @@
 - [x] Branch filtering and selection
 - [x] Better error handling with retry logic
 - [x] Loading states and progress indicators
-- [ ] Keyboard shortcuts help dialog (?)
+- [x] Keyboard shortcuts help dialog (?)
 - [x] Filter workflows by status (success/failure/running)
-- [ ] View workflow YAML/files
-- [ ] Download job artifacts
+ - [x] View workflow YAML/files
+ - [x] Download job artifacts
 
 ## v0.6 - Advanced Logs
 

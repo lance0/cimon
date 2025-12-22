@@ -27,6 +27,9 @@ const (
 	StateLogViewer
 	StateBranchSelection
 	StateStatusFilter
+	StateHelp
+	StateWorkflowViewer
+	StateArtifactSelection
 )
 
 // Model is the Bubble Tea model for the TUI
@@ -70,6 +73,15 @@ type Model struct {
 	logJobID         int64
 	logLastFetch     time.Time
 	logStreaming     bool
+
+	// Workflow viewer state
+	workflowContent      string
+	workflowScrollOffset int
+	workflowPath         string
+
+	// Artifact selection state
+	artifacts             []gh.Artifact
+	selectedArtifactIndex int
 
 	// UI state
 	cursor    int
@@ -132,6 +144,22 @@ type RunsLoadedMsg struct {
 // BranchesLoadedMsg is sent when branches are loaded
 type BranchesLoadedMsg struct {
 	Branches []gh.Branch
+}
+
+// WorkflowLoadedMsg is sent when workflow content is loaded
+type WorkflowLoadedMsg struct {
+	Content string
+	Path    string
+}
+
+// ArtifactsLoadedMsg is sent when artifacts are loaded
+type ArtifactsLoadedMsg struct {
+	Artifacts []gh.Artifact
+}
+
+// ArtifactDownloadedMsg is sent when an artifact is downloaded
+type ArtifactDownloadedMsg struct {
+	Filename string
 }
 
 // ErrMsg is sent when an error occurs
@@ -266,24 +294,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Continue streaming if job is still running
 		return m, m.scheduleLogUpdate()
 
+	case WorkflowLoadedMsg:
+		m.workflowContent = msg.Content
+		m.workflowPath = msg.Path
+		m.state = StateWorkflowViewer
+		return m, nil
+
+	case ArtifactsLoadedMsg:
+		m.artifacts = msg.Artifacts
+		m.selectedArtifactIndex = 0
+		m.state = StateArtifactSelection
+		return m, nil
+
+	case ArtifactDownloadedMsg:
+		// Show success message and return to previous state
+		m.state = StateReady
+		return m, nil
+
 	case TickMsg:
-		if m.state == StateLogViewer && m.logStreaming {
-			return m, m.updateLogs(m.logJobID)
-		} else if m.watching {
-			m.loadingMessage = "Watching for updates..."
-			m.state = StateLoading
-			return m, m.fetchWorkflowRuns()
+		{
+			if m.state == StateLogViewer && m.logStreaming {
+				return m, m.updateLogs(m.logJobID)
+			} else if m.watching {
+				m.loadingMessage = "Watching for updates..."
+				m.state = StateLoading
+				return m, m.fetchWorkflowRuns()
+			}
 		}
 		return m, nil
 
 	case ErrMsg:
-		m.err = msg.Err
-		m.state = StateError
-		m.exitCode = 2
-		return m, nil
-	}
+		{
+			m.err = msg.Err
+			m.state = StateError
+			m.exitCode = 2
+			return m, nil
+		}
 
-	return m, nil
+	default:
+		{
+			return m, nil
+		}
+	}
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -331,6 +383,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.selectedFilterIndex > 0 {
 				m.selectedFilterIndex--
 			}
+		} else if m.state == StateArtifactSelection {
+			// Navigate artifacts up
+			if m.selectedArtifactIndex > 0 {
+				m.selectedArtifactIndex--
+			}
 		} else {
 			if m.cursor > 0 {
 				m.cursor--
@@ -355,6 +412,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Navigate filter options down
 			if m.selectedFilterIndex < len(m.statusFilterOptions)-1 {
 				m.selectedFilterIndex++
+			}
+		} else if m.state == StateArtifactSelection {
+			// Navigate artifacts down
+			if m.selectedArtifactIndex < len(m.artifacts)-1 {
+				m.selectedArtifactIndex++
 			}
 		} else if m.showingJobDetails {
 			if m.selectedJob != nil && m.jobDetailsCursor < len(m.selectedJob.Steps)-1 {
@@ -400,6 +462,16 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.selectedRunIndex = 0
 				return m, m.fetchWorkflowRuns()
 			}
+		} else if m.state == StateArtifactSelection {
+			// Download selected artifact
+			if len(m.artifacts) > 0 && m.selectedArtifactIndex >= 0 && m.selectedArtifactIndex < len(m.artifacts) {
+				selectedArtifact := m.artifacts[m.selectedArtifactIndex]
+				if !selectedArtifact.Expired {
+					m.loadingMessage = fmt.Sprintf("Downloading %s...", selectedArtifact.Name)
+					m.state = StateLoading
+					return m, m.downloadArtifact(selectedArtifact)
+				}
+			}
 		}
 		return m, nil
 
@@ -437,17 +509,6 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			} else {
 				m.state = StateReady
 			}
-			return m, nil
-		}
-		return m, nil
-
-	case key.Matches(msg, m.keys.Search):
-		if m.state == StateLogViewer {
-			// For now, just set a demo search term
-			// In a real implementation, this would enter input mode
-			m.logSearchTerm = "error"
-			m.findSearchMatches()
-			return m, nil
 		}
 		return m, nil
 
@@ -487,18 +548,6 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case key.Matches(msg, m.keys.BranchSelect):
-		if m.state == StateReady && !m.showingJobDetails && !m.showingLogs {
-			// Enter branch selection mode
-			m.selectedBranchIndex = 0 // Start with first branch
-			return m, m.fetchBranches()
-		} else if m.state == StateBranchSelection {
-			// Exit branch selection mode (don't change branch)
-			m.state = StateReady
-			return m, nil
-		}
-		return m, nil
-
 	case key.Matches(msg, m.keys.Filter):
 		if m.state == StateReady && !m.showingJobDetails && !m.showingLogs {
 			// Enter status filter mode
@@ -509,15 +558,48 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Apply selected filter and reload runs
 			if m.selectedFilterIndex >= 0 && m.selectedFilterIndex < len(m.statusFilterOptions) {
 				m.currentStatusFilter = m.statusFilterOptions[m.selectedFilterIndex]
+				m.loadingMessage = fmt.Sprintf("Applying '%s' filter...", m.statusFilterOptions[m.selectedFilterIndex])
 				m.state = StateLoading
 				m.selectedRunIndex = 0
 				return m, m.fetchWorkflowRuns()
 			}
 		}
 		return m, nil
-	}
 
-	return m, nil
+	case key.Matches(msg, m.keys.Help):
+		if m.state != StateHelp {
+			// Enter help mode
+			m.state = StateHelp
+			return m, nil
+		} else {
+			// Exit help mode
+			m.state = StateReady
+			return m, nil
+		}
+
+	case key.Matches(msg, m.keys.Workflow):
+		if m.run != nil && m.run.Path != "" {
+			// Enter workflow viewer mode
+			m.workflowScrollOffset = 0
+			m.workflowPath = m.run.Path
+			m.loadingMessage = fmt.Sprintf("Loading workflow file %s...", m.run.Path)
+			m.state = StateLoading
+			return m, m.fetchWorkflowContent()
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Artifacts):
+		if m.run != nil {
+			// Enter artifact selection mode
+			m.loadingMessage = "Loading artifacts..."
+			m.state = StateLoading
+			return m, m.fetchArtifacts()
+		}
+		return m, nil
+
+	default:
+		return m, nil
+	}
 }
 
 // Commands
@@ -589,6 +671,37 @@ func (m Model) updateLogs(jobID int64) tea.Cmd {
 			return LogUpdatedMsg{Content: m.logContent}
 		}
 		return LogUpdatedMsg{Content: logs}
+	}
+}
+
+func (m Model) fetchWorkflowContent() tea.Cmd {
+	return func() tea.Msg {
+		content, err := m.client.FetchWorkflowContent(m.config.Owner, m.config.Repo, m.workflowPath)
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+		return WorkflowLoadedMsg{Content: content, Path: m.workflowPath}
+	}
+}
+
+func (m Model) fetchArtifacts() tea.Cmd {
+	return func() tea.Msg {
+		artifacts, err := m.client.FetchWorkflowArtifacts(m.config.Owner, m.config.Repo, m.run.ID)
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+		return ArtifactsLoadedMsg{Artifacts: artifacts}
+	}
+}
+
+func (m Model) downloadArtifact(artifact gh.Artifact) tea.Cmd {
+	return func() tea.Msg {
+		filename := fmt.Sprintf("%s.zip", artifact.Name)
+		err := m.client.DownloadArtifact(m.config.Owner, m.config.Repo, artifact.ID, filename)
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+		return ArtifactDownloadedMsg{Filename: filename}
 	}
 }
 
