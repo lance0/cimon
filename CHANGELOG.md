@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### v0.8 Multi-Repo Dashboard
+- **Multi-Repo Mode**: Monitor multiple repositories in a single aggregated dashboard (`--repos` flag)
+- **Config File Support**: Persistent repo configuration via `cimon.yml` file
+- **Aggregated View**: All runs from all repos sorted by time (most recent first)
+- **Repo Context**: Each run displays its source repository for easy identification
+- **Seamless Navigation**: Navigate multi-repo runs with existing `j`/`k` keys, Enter to drill into jobs
+
 #### v0.7 Notifications & Hooks
 - **Desktop Notifications**: OS-native notifications when workflow completes in watch mode (`--notify` flag)
 - **Custom Hooks**: Execute user scripts on completion with environment variables (`--hook` flag)

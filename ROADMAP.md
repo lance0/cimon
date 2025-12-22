@@ -62,9 +62,11 @@
 - [ ] Slack/Discord integration
 - [ ] Email notifications
 
-## v0.8 - Multi-Repo & Enterprise
+## v0.8 - Multi-Repo Dashboard
 
-- [ ] Multi-repo dashboard
+- [x] Multi-repo dashboard with aggregated view
+- [x] Config file support (`cimon.yml`)
+- [x] CLI flag for ad-hoc multi-repo (`--repos`)
 - [ ] Organization-wide CI monitoring
 - [ ] Team-based access controls
 - [ ] Custom CI server support (Jenkins, etc.)
@@ -77,5 +79,5 @@
 - [ ] Jenkins support
 - [ ] Custom themes and color schemes
 - [ ] Plugin system for extensibility
-- [ ] Configuration file support (.cimonrc)
+- [x] Configuration file support (cimon.yml)
 - [ ] Performance profiling and optimization

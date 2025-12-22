@@ -14,19 +14,37 @@ import (
 // ErrHelp is returned when --help is requested
 var ErrHelp = pflag.ErrHelp
 
+// RepoSpec represents a single repository specification (v0.8)
+type RepoSpec struct {
+	Owner  string
+	Repo   string
+	Branch string // Optional: if empty, fetch all branches
+}
+
+// Slug returns "owner/repo" format
+func (r *RepoSpec) Slug() string {
+	return r.Owner + "/" + r.Repo
+}
+
 // Config holds all runtime configuration for cimon
 type Config struct {
-	Owner   string
-	Repo    string
-	Branch  string
-	Watch   bool
-	Poll    time.Duration
-	NoColor bool
-	Plain   bool
-	Json    bool
-	Version bool
-	Notify  bool   // v0.7 - Enable desktop notifications on completion
-	Hook    string // v0.7 - Path to hook script to execute on completion
+	Owner        string
+	Repo         string
+	Branch       string
+	Watch        bool
+	Poll         time.Duration
+	NoColor      bool
+	Plain        bool
+	Json         bool
+	Version      bool
+	Notify       bool       // v0.7 - Enable desktop notifications on completion
+	Hook         string     // v0.7 - Path to hook script to execute on completion
+	Repositories []RepoSpec // v0.8 - Multiple repos for multi-repo mode
+}
+
+// IsMultiRepo returns true if multiple repos are configured (v0.8)
+func (c *Config) IsMultiRepo() bool {
+	return len(c.Repositories) > 1
 }
 
 // Default values
@@ -53,7 +71,9 @@ func Parse(args []string) (*Config, error) {
 	fs := pflag.NewFlagSet("cimon", pflag.ContinueOnError)
 
 	var repoFlag string
+	var reposFlag string
 	fs.StringVarP(&repoFlag, "repo", "r", "", "Repository in owner/name format")
+	fs.StringVar(&reposFlag, "repos", "", "Comma-separated repos for multi-repo mode (owner/repo1,owner/repo2)")
 	fs.StringVarP(&cfg.Branch, "branch", "b", "", "Branch name")
 	fs.BoolVarP(&cfg.Watch, "watch", "w", false, "Watch mode - poll until completion")
 	fs.DurationVarP(&cfg.Poll, "poll", "p", DefaultPollInterval, "Poll interval for watch mode")
@@ -68,7 +88,16 @@ func Parse(args []string) (*Config, error) {
 		return nil, err
 	}
 
-	// Handle --repo flag
+	// Handle --repos flag (v0.8 multi-repo mode)
+	if reposFlag != "" {
+		specs, err := ParseReposFlag(reposFlag)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Repositories = specs
+	}
+
+	// Handle --repo flag (single repo mode)
 	if repoFlag != "" {
 		parts := strings.SplitN(repoFlag, "/", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
@@ -79,6 +108,30 @@ func Parse(args []string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// ParseReposFlag parses the --repos flag into RepoSpec slice (v0.8)
+func ParseReposFlag(flag string) ([]RepoSpec, error) {
+	if flag == "" {
+		return nil, nil
+	}
+
+	repos := strings.Split(flag, ",")
+	var specs []RepoSpec
+
+	for _, r := range repos {
+		r = strings.TrimSpace(r)
+		if r == "" {
+			continue
+		}
+		parts := strings.SplitN(r, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return nil, fmt.Errorf("invalid repo format %q: expected owner/repo", r)
+		}
+		specs = append(specs, RepoSpec{Owner: parts[0], Repo: parts[1]})
+	}
+
+	return specs, nil
 }
 
 // Resolve fills in missing Owner, Repo, and Branch from git.

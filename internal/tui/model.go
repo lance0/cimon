@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -98,15 +99,20 @@ type Model struct {
 	multiJobSelectIdx  int               // Selection cursor for job selection
 
 	// Log comparison state (v0.6)
-	compareRunIdx1     int      // First run index for comparison
-	compareRunIdx2     int      // Second run index for comparison (-1 = not selected)
-	compareSelectStep  int      // 0 = selecting first, 1 = selecting second
-	compareCursor      int      // Cursor for run selection
-	compareLogs1       string   // Logs for first run
-	compareLogs2       string   // Logs for second run
-	compareDiff        []string // Computed diff lines
-	compareDiffColors  []int    // 0=normal, 1=added, -1=removed
-	compareScrollOff   int      // Scroll offset for diff view
+	compareRunIdx1    int      // First run index for comparison
+	compareRunIdx2    int      // Second run index for comparison (-1 = not selected)
+	compareSelectStep int      // 0 = selecting first, 1 = selecting second
+	compareCursor     int      // Cursor for run selection
+	compareLogs1      string   // Logs for first run
+	compareLogs2      string   // Logs for second run
+	compareDiff       []string // Computed diff lines
+	compareDiffColors []int    // 0=normal, 1=added, -1=removed
+	compareScrollOff  int      // Scroll offset for diff view
+
+	// Multi-repo state (v0.8)
+	multiRepoMode      bool             // True when monitoring multiple repos
+	sourcedRuns        []gh.SourcedRun  // Runs from all repos, sorted by time
+	selectedSourcedRun int              // Index in sourcedRuns slice
 
 	// Workflow viewer state
 	workflowContent      string
@@ -219,6 +225,11 @@ type CompareLogsLoadedMsg struct {
 	Logs2 string
 }
 
+// MultiRepoRunsLoadedMsg is sent when runs from multiple repos are loaded (v0.8)
+type MultiRepoRunsLoadedMsg struct {
+	SourcedRuns []gh.SourcedRun
+}
+
 // ErrMsg is sent when an error occurs
 type ErrMsg struct {
 	Err error
@@ -237,14 +248,21 @@ func NewModel(cfg *config.Config, client *gh.Client) Model {
 	// Colors are enabled unless NO_COLOR is set or --no-color flag is used
 	colorEnabled := os.Getenv("NO_COLOR") == "" && !cfg.NoColor
 
+	// v0.8: Determine loading message based on mode
+	loadingMsg := "Loading workflow runs..."
+	if cfg.IsMultiRepo() {
+		loadingMsg = "Loading runs from multiple repositories..."
+	}
+
 	return Model{
 		config:              cfg,
 		client:              client,
 		state:               StateLoading,
-		selectedRunIndex:    0,  // Start with the first (latest) run
-		currentStatusFilter: "", // Start with no filter (all runs)
+		multiRepoMode:       cfg.IsMultiRepo(), // v0.8
+		selectedRunIndex:    0,                 // Start with the first (latest) run
+		currentStatusFilter: "",                // Start with no filter (all runs)
 		statusFilterOptions: []string{"", "success", "failure", "in_progress", "completed", "queued"},
-		loadingMessage:      "Loading workflow runs...",
+		loadingMessage:      loadingMsg,
 		styles:              DefaultStyles(colorEnabled),
 		keys:                DefaultKeyMap(),
 		spinner:             s,
@@ -255,6 +273,13 @@ func NewModel(cfg *config.Config, client *gh.Client) Model {
 
 // Init implements tea.Model
 func (m Model) Init() tea.Cmd {
+	// v0.8: Branch based on multi-repo mode
+	if m.multiRepoMode {
+		return tea.Batch(
+			m.spinner.Tick,
+			m.fetchMultiRepoRuns(),
+		)
+	}
 	return tea.Batch(
 		m.spinner.Tick,
 		m.fetchWorkflowRuns(),
@@ -289,6 +314,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.fetchJobs()
 		}
 		// No runs found - still go to ready state but show message
+		m.run = nil
+		m.state = StateReady
+		return m, nil
+
+	case MultiRepoRunsLoadedMsg:
+		// v0.8: Handle multi-repo runs loading
+		m.sourcedRuns = msg.SourcedRuns
+		m.lastFetch = time.Now()
+		if len(m.sourcedRuns) > 0 {
+			// Ensure selectedSourcedRun is valid
+			if m.selectedSourcedRun >= len(m.sourcedRuns) {
+				m.selectedSourcedRun = 0
+			}
+			// Set current run and context from selected sourced run
+			sr := m.sourcedRuns[m.selectedSourcedRun]
+			m.run = sr.Run
+			m.config.Owner = sr.Owner
+			m.config.Repo = sr.Repo
+			return m, m.fetchJobs()
+		}
+		// No runs found
 		m.run = nil
 		m.state = StateReady
 		return m, nil
@@ -547,6 +593,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.compareScrollOff > 0 {
 				m.compareScrollOff--
 			}
+		} else if m.multiRepoMode && m.state == StateReady {
+			// v0.8: Navigate multi-repo runs up
+			if m.selectedSourcedRun > 0 {
+				m.selectedSourcedRun--
+			}
 		} else {
 			if m.cursor > 0 {
 				m.cursor--
@@ -598,6 +649,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if maxScroll > 0 && m.compareScrollOff < maxScroll {
 				m.compareScrollOff++
 			}
+		} else if m.multiRepoMode && m.state == StateReady {
+			// v0.8: Navigate multi-repo runs down
+			if m.selectedSourcedRun < len(m.sourcedRuns)-1 {
+				m.selectedSourcedRun++
+			}
 		} else if m.showingJobDetails {
 			if m.selectedJob != nil && m.jobDetailsCursor < len(m.selectedJob.Steps)-1 {
 				m.jobDetailsCursor++
@@ -643,6 +699,16 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		} else if m.multiRepoMode && m.state == StateReady && len(m.sourcedRuns) > 0 {
+			// v0.8: Select multi-repo run and load its jobs
+			sr := m.sourcedRuns[m.selectedSourcedRun]
+			m.run = sr.Run
+			m.config.Owner = sr.Owner
+			m.config.Repo = sr.Repo
+			m.cursor = 0 // Reset job cursor
+			m.loadingMessage = fmt.Sprintf("Loading jobs for %s...", sr.RepoSlug())
+			m.state = StateLoading
+			return m, m.fetchJobs()
 		} else if m.state == StateReady && len(m.jobs) > 0 && m.cursor >= 0 && m.cursor < len(m.jobs) {
 			// Enter job details mode
 			m.showingJobDetails = true
@@ -960,6 +1026,43 @@ func (m Model) fetchWorkflowRuns() tea.Cmd {
 		}
 
 		return RunsLoadedMsg{Runs: runs}
+	}
+}
+
+// fetchMultiRepoRuns fetches runs from all configured repositories (v0.8)
+func (m Model) fetchMultiRepoRuns() tea.Cmd {
+	return func() tea.Msg {
+		var allRuns []gh.SourcedRun
+
+		for _, repo := range m.config.Repositories {
+			runs, err := m.client.FetchWorkflowRuns(
+				repo.Owner, repo.Repo, repo.Branch,
+				m.currentStatusFilter, 1, 5, // Fetch 5 recent runs per repo
+			)
+			if err != nil {
+				// Log error but continue with other repos
+				continue
+			}
+
+			for i := range runs {
+				allRuns = append(allRuns, gh.SourcedRun{
+					Owner: repo.Owner,
+					Repo:  repo.Repo,
+					Run:   &runs[i],
+				})
+			}
+		}
+
+		// Sort by UpdatedAt descending (most recent first)
+		sort.Slice(allRuns, func(i, j int) bool {
+			return allRuns[i].Run.UpdatedAt.After(allRuns[j].Run.UpdatedAt)
+		})
+
+		if len(allRuns) == 0 {
+			return ErrMsg{Err: fmt.Errorf("no workflow runs found across repositories")}
+		}
+
+		return MultiRepoRunsLoadedMsg{SourcedRuns: allRuns}
 	}
 }
 

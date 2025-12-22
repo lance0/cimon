@@ -27,6 +27,18 @@ type User struct {
 	Login string `json:"login"`
 }
 
+// SourcedRun wraps a WorkflowRun with its source repository info (v0.8)
+type SourcedRun struct {
+	Owner string       // Repository owner
+	Repo  string       // Repository name
+	Run   *WorkflowRun // The actual workflow run
+}
+
+// RepoSlug returns "owner/repo" format
+func (s *SourcedRun) RepoSlug() string {
+	return s.Owner + "/" + s.Repo
+}
+
 // Job represents a job within a workflow run
 type Job struct {
 	ID          int64      `json:"id"`

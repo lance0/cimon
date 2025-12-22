@@ -60,47 +60,80 @@ func run() int {
 		return 0
 	}
 
+	// Load config file if no --repos flag (v0.8)
+	if len(cfg.Repositories) == 0 {
+		fileCfg, fileErr := config.LoadConfigFile(config.DefaultConfigPath())
+		if fileErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: %v\n", fileErr)
+		} else if fileCfg != nil {
+			specs, specErr := fileCfg.ToRepoSpecs()
+			if specErr != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", specErr)
+				return 2
+			}
+			cfg.Repositories = specs
+		}
+	}
+
 	// Create GitHub client (may be needed for detached HEAD resolution)
 	var client *gh.Client
 
-	// Resolve repo and branch from git
-	if err := cfg.Resolve(); err != nil {
-		if err == config.ErrDetachedHead {
-			// In detached HEAD state, we need to resolve the default branch
-			// First create client to get repository info
-			client, clientErr := gh.NewClient()
-			if clientErr != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", clientErr)
-				return 2
-			}
-
-			// Get repository info (should be resolved by now)
-			cwd, cwdErr := os.Getwd()
-			if cwdErr != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", cwdErr)
-				return 2
-			}
-
-			repoInfo, repoErr := git.GetRepoInfo(cwd)
-			if repoErr != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", repoErr)
-				return 2
-			}
-
-			cfg.Owner = repoInfo.Owner
-			cfg.Repo = repoInfo.Repo
-
-			// Get default branch from GitHub
-			repo, repoErr := client.GetRepository(cfg.Owner, cfg.Repo)
-			if repoErr != nil {
-				fmt.Fprintf(os.Stderr, "Error: detached HEAD - could not determine default branch: %v\n", repoErr)
-				return 2
-			}
-
-			cfg.Branch = repo.DefaultBranch
-		} else {
+	// Multi-repo mode: skip single-repo resolution (v0.8)
+	if cfg.IsMultiRepo() {
+		var err error
+		client, err = gh.NewClient()
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 2
+		}
+	} else if len(cfg.Repositories) == 1 {
+		// Single repo from --repos or config file
+		cfg.Owner = cfg.Repositories[0].Owner
+		cfg.Repo = cfg.Repositories[0].Repo
+		cfg.Branch = cfg.Repositories[0].Branch
+		cfg.Repositories = nil // Clear to use single-repo mode
+	}
+
+	// Resolve repo and branch from git (single-repo mode only)
+	if !cfg.IsMultiRepo() && (cfg.Owner == "" || cfg.Repo == "") {
+		if err := cfg.Resolve(); err != nil {
+			if err == config.ErrDetachedHead {
+				// In detached HEAD state, we need to resolve the default branch
+				// First create client to get repository info
+				client, clientErr := gh.NewClient()
+				if clientErr != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", clientErr)
+					return 2
+				}
+
+				// Get repository info (should be resolved by now)
+				cwd, cwdErr := os.Getwd()
+				if cwdErr != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", cwdErr)
+					return 2
+				}
+
+				repoInfo, repoErr := git.GetRepoInfo(cwd)
+				if repoErr != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", repoErr)
+					return 2
+				}
+
+				cfg.Owner = repoInfo.Owner
+				cfg.Repo = repoInfo.Repo
+
+				// Get default branch from GitHub
+				repo, repoErr := client.GetRepository(cfg.Owner, cfg.Repo)
+				if repoErr != nil {
+					fmt.Fprintf(os.Stderr, "Error: detached HEAD - could not determine default branch: %v\n", repoErr)
+					return 2
+				}
+
+				cfg.Branch = repo.DefaultBranch
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				return 2
+			}
 		}
 	}
 
@@ -282,6 +315,7 @@ USAGE:
 
 FLAGS:
     -r, --repo string     Repository in owner/name format
+        --repos string    Comma-separated repos for multi-repo mode (owner/repo1,owner/repo2)
     -b, --branch string   Branch name
     -w, --watch           Watch mode - poll until completion
     -p, --poll duration   Poll interval for watch mode (default 5s)
@@ -292,14 +326,20 @@ FLAGS:
         --json            JSON output for scripting
     -v, --version         Show version
 
+CONFIG FILE (cimon.yml):
+    repositories:
+      - owner/repo1
+      - owner/repo2
+
 EXAMPLES:
-    cimon                           # Monitor current repo
-    cimon --plain                   # Plain text output
-    cimon -w --notify               # Watch with desktop notification
-    cimon -w --hook ./my-script.sh  # Watch with custom hook
-    cimon retry                     # Rerun latest workflow
-    cimon cancel                    # Cancel running workflow
-    cimon dispatch deploy.yml       # Trigger workflow dispatch
+    cimon                                   # Monitor current repo
+    cimon --repos org/api,org/web           # Monitor multiple repos
+    cimon --plain                           # Plain text output
+    cimon -w --notify                       # Watch with desktop notification
+    cimon -w --hook ./my-script.sh          # Watch with custom hook
+    cimon retry                             # Rerun latest workflow
+    cimon cancel                            # Cancel running workflow
+    cimon dispatch deploy.yml               # Trigger workflow dispatch
 
 HOOK ENVIRONMENT VARIABLES:
     CIMON_WORKFLOW_NAME   Workflow name (e.g., "CI")

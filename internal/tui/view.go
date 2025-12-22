@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // View implements tea.Model
@@ -118,7 +119,21 @@ func (m Model) viewReady() string {
 	b.WriteString(m.viewHeader())
 	b.WriteString("\n")
 
-	// Run summary
+	// v0.8: Multi-repo view
+	if m.multiRepoMode {
+		if len(m.sourcedRuns) > 0 {
+			b.WriteString(m.viewMultiRepoRuns())
+		} else {
+			b.WriteString("\n  No workflow runs found across repositories\n")
+		}
+
+		// Footer
+		b.WriteString("\n")
+		b.WriteString(m.viewFooter())
+		return b.String()
+	}
+
+	// Run summary (single-repo mode)
 	if m.run != nil {
 		b.WriteString(m.viewRunSummary())
 		b.WriteString("\n")
@@ -146,6 +161,38 @@ func (m Model) viewHeader() string {
 	var b strings.Builder
 
 	b.WriteString("\n  ")
+
+	// v0.8: Multi-repo header
+	if m.multiRepoMode {
+		b.WriteString(m.styles.RepoName.Render("Multi-Repo Dashboard"))
+		repoCount := len(m.config.Repositories)
+		b.WriteString(m.styles.Separator.Render(fmt.Sprintf(" (%d repos)", repoCount)))
+
+		// Show current filter if active
+		if m.currentStatusFilter != "" {
+			filterLabels := map[string]string{
+				"success":     "✓",
+				"failure":     "✗",
+				"in_progress": "●",
+				"completed":   "○",
+				"queued":      "…",
+			}
+			if icon, ok := filterLabels[m.currentStatusFilter]; ok {
+				filterInfo := fmt.Sprintf(" [%s]", icon)
+				b.WriteString(m.styles.Separator.Render(filterInfo))
+			}
+		}
+
+		if m.watching {
+			b.WriteString("  ")
+			b.WriteString(m.styles.Watching.Render("◉ Watching"))
+		}
+
+		b.WriteString("\n")
+		return b.String()
+	}
+
+	// Single-repo header (existing)
 	b.WriteString(m.styles.RepoName.Render(m.config.RepoSlug()))
 	b.WriteString(m.styles.Separator.Render(" • "))
 	b.WriteString(m.styles.Branch.Render(m.config.Branch))
@@ -292,6 +339,88 @@ func (m Model) viewFooter() string {
 	}
 
 	b.WriteString("\n")
+
+	return b.String()
+}
+
+// viewMultiRepoRuns renders the aggregated run list from multiple repos (v0.8)
+func (m Model) viewMultiRepoRuns() string {
+	var b strings.Builder
+
+	// Calculate max width for repo slug
+	maxRepoLen := 0
+	for _, sr := range m.sourcedRuns {
+		slug := sr.RepoSlug()
+		if len(slug) > maxRepoLen {
+			maxRepoLen = len(slug)
+		}
+	}
+
+	for i, sr := range m.sourcedRuns {
+		run := sr.Run
+
+		// Selection indicator
+		if i == m.selectedSourcedRun {
+			b.WriteString(m.styles.Selected.Render("→ "))
+		} else {
+			b.WriteString("  ")
+		}
+
+		// Status icon
+		icon := "○"
+		var iconStyle lipgloss.Style
+		switch run.Status {
+		case "completed":
+			if run.Conclusion != nil {
+				switch *run.Conclusion {
+				case "success":
+					icon = "✓"
+					iconStyle = m.styles.StatusSuccess
+				case "failure":
+					icon = "✗"
+					iconStyle = m.styles.StatusFailure
+				case "cancelled":
+					icon = "⊘"
+					iconStyle = m.styles.Dim
+				default:
+					iconStyle = m.styles.Dim
+				}
+			} else {
+				iconStyle = m.styles.Dim
+			}
+		case "in_progress":
+			icon = "●"
+			iconStyle = m.styles.StatusInProgress
+		case "queued":
+			icon = "…"
+			iconStyle = m.styles.StatusQueued
+		default:
+			iconStyle = m.styles.Dim
+		}
+
+		b.WriteString(iconStyle.Render(icon))
+		b.WriteString(" ")
+
+		// Repo slug (padded for alignment)
+		slug := sr.RepoSlug()
+		b.WriteString(m.styles.Branch.Render(fmt.Sprintf("%-*s", maxRepoLen, slug)))
+		b.WriteString(m.styles.Separator.Render(" • "))
+
+		// Workflow name and run number
+		b.WriteString(m.styles.JobName.Render(run.Name))
+		b.WriteString(m.styles.Separator.Render(" #"))
+		b.WriteString(m.styles.Dim.Render(fmt.Sprintf("%d", run.RunNumber)))
+		b.WriteString("  ")
+
+		// Branch
+		b.WriteString(m.styles.Dim.Render(fmt.Sprintf("(%s)", run.HeadBranch)))
+		b.WriteString("  ")
+
+		// Time ago
+		b.WriteString(m.styles.Dim.Render(timeAgo(run.UpdatedAt)))
+
+		b.WriteString("\n")
+	}
 
 	return b.String()
 }
