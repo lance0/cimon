@@ -35,10 +35,47 @@
 - [ ] Cancel running workflow
 - [ ] Trigger workflow dispatch
 
+## v0.5 - Enhanced UX
+
+- [ ] Workflow history with pagination (beyond just latest run)
+- [ ] Branch filtering and selection
+- [ ] Better error handling with retry logic
+- [ ] Loading states and progress indicators
+- [ ] Keyboard shortcuts help dialog (?)
+- [ ] Filter workflows by status (success/failure/running)
+- [ ] View workflow YAML/files
+- [ ] Download job artifacts
+
+## v0.6 - Advanced Logs
+
+- [ ] Log filtering by job/step
+- [ ] Log export to file
+- [ ] Syntax highlighting for different log types
+- [ ] Log comparison between runs
+- [ ] Follow specific job logs in multi-job workflows
+
+## v0.7 - Notifications & Automation
+
+- [ ] Desktop notifications on completion
+- [ ] Webhook support for external integrations
+- [ ] Slack/Discord integration
+- [ ] Custom completion hooks/scripts
+- [ ] Email notifications
+
+## v0.8 - Multi-Repo & Enterprise
+
+- [ ] Multi-repo dashboard
+- [ ] Organization-wide CI monitoring
+- [ ] Team-based access controls
+- [ ] Custom CI server support (Jenkins, etc.)
+- [ ] Enterprise GitHub support
+
 ## Future
 
 - [ ] GitLab CI support behind provider interface
 - [ ] CircleCI support
-- [ ] Multi-repo dashboard
-- [ ] Notifications on completion
-- [ ] Custom workflow filtering
+- [ ] Jenkins support
+- [ ] Custom themes and color schemes
+- [ ] Plugin system for extensibility
+- [ ] Configuration file support (.cimonrc)
+- [ ] Performance profiling and optimization
