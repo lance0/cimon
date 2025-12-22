@@ -64,15 +64,17 @@ type Model struct {
 	jobDetailsCursor  int
 
 	// Log viewer state
-	showingLogs      bool
-	logContent       string
-	logScrollOffset  int
-	logSearchTerm    string
-	logSearchMatches []int // line numbers with matches
-	logSearchIndex   int   // current match index
-	logJobID         int64
-	logLastFetch     time.Time
-	logStreaming     bool
+	showingLogs       bool
+	logContent        string
+	logScrollOffset   int
+	logSearchTerm     string
+	logSearchMatches  []int // line numbers with matches
+	logSearchIndex    int   // current match index
+	logJobID          int64
+	logLastFetch      time.Time
+	logStreaming      bool
+	searchInputMode   bool   // true when typing search term
+	searchInputBuffer string // buffer for search input
 
 	// Workflow viewer state
 	workflowContent      string
@@ -339,6 +341,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle search input mode first
+	if m.searchInputMode {
+		switch msg.Type {
+		case tea.KeyEnter:
+			// Confirm search
+			m.logSearchTerm = m.searchInputBuffer
+			m.searchInputMode = false
+			m.findSearchMatches()
+			if len(m.logSearchMatches) > 0 {
+				m.scrollToLine(m.logSearchMatches[0])
+			}
+			return m, nil
+		case tea.KeyEsc:
+			// Cancel search
+			m.searchInputMode = false
+			m.searchInputBuffer = ""
+			return m, nil
+		case tea.KeyBackspace:
+			// Remove last character
+			if len(m.searchInputBuffer) > 0 {
+				m.searchInputBuffer = m.searchInputBuffer[:len(m.searchInputBuffer)-1]
+			}
+			return m, nil
+		default:
+			// Add character to search buffer
+			if msg.Type == tea.KeyRunes {
+				m.searchInputBuffer += string(msg.Runes)
+			}
+			return m, nil
+		}
+	}
+
+	// Handle help state - any key exits (except q which quits)
+	if m.state == StateHelp && !key.Matches(msg, m.keys.Quit) {
+		m.state = StateReady
+		return m, nil
+	}
+
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		return m, tea.Quit
@@ -424,7 +464,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		} else {
 			if m.cursor < len(m.jobs)-1 {
-				m.cursor--
+				m.cursor++
 			}
 		}
 		return m, nil
@@ -526,6 +566,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case key.Matches(msg, m.keys.Search):
+		if m.state == StateLogViewer && !m.searchInputMode {
+			// Enter search input mode
+			m.searchInputMode = true
+			m.searchInputBuffer = ""
+			return m, nil
+		}
+		return m, nil
+
 	case key.Matches(msg, m.keys.NextRun):
 		if !m.showingJobDetails && !m.showingLogs && len(m.runs) > 1 {
 			if m.selectedRunIndex < len(m.runs)-1 {
@@ -570,12 +619,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.state != StateHelp {
 			// Enter help mode
 			m.state = StateHelp
-			return m, nil
-		} else {
-			// Exit help mode
-			m.state = StateReady
-			return m, nil
 		}
+		// Note: exiting help with any key is handled at the top of handleKey
+		return m, nil
 
 	case key.Matches(msg, m.keys.Workflow):
 		if m.run != nil && m.run.Path != "" {
@@ -686,6 +732,9 @@ func (m Model) fetchWorkflowContent() tea.Cmd {
 
 func (m Model) fetchArtifacts() tea.Cmd {
 	return func() tea.Msg {
+		if m.run == nil {
+			return ArtifactsLoadedMsg{Artifacts: nil}
+		}
 		artifacts, err := m.client.FetchWorkflowArtifacts(m.config.Owner, m.config.Repo, m.run.ID)
 		if err != nil {
 			return ErrMsg{Err: err}

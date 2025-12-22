@@ -724,6 +724,11 @@ func (m Model) viewLogViewer() string {
 			b.WriteString("\n")
 		}
 
+		// Show search input if in search mode
+		if m.searchInputMode {
+			b.WriteString(fmt.Sprintf("\nSearch: %s_", m.searchInputBuffer))
+		}
+
 		// Show status information
 		var statusParts []string
 
@@ -736,7 +741,7 @@ func (m Model) viewLogViewer() string {
 			statusParts = append(statusParts, "STREAMING")
 		}
 
-		if m.logSearchTerm != "" {
+		if m.logSearchTerm != "" && !m.searchInputMode {
 			if len(m.logSearchMatches) > 0 {
 				statusParts = append(statusParts, fmt.Sprintf("Search: '%s' (%d/%d)", m.logSearchTerm, m.logSearchIndex+1, len(m.logSearchMatches)))
 			} else {

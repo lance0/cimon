@@ -12,11 +12,13 @@ import (
 	"strings"
 
 	"github.com/cli/go-gh/v2/pkg/api"
+	"github.com/cli/go-gh/v2/pkg/auth"
 )
 
 // Client wraps the GitHub REST API client
 type Client struct {
-	rest *api.RESTClient
+	rest      *api.RESTClient
+	authToken string // Token for raw HTTP requests
 }
 
 // NewClient creates a new GitHub API client.
@@ -27,9 +29,17 @@ func NewClient() (*Client, error) {
 		EnableCache: false,
 	}
 
+	// Store token for raw HTTP requests
+	var authToken string
+
 	// Check if GITHUB_TOKEN is set as override
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 		opts.AuthToken = token
+		authToken = token
+	} else {
+		// Try to get token from gh CLI
+		token, _ := getGHCLIToken()
+		authToken = token
 	}
 
 	rest, err := api.NewRESTClient(opts)
@@ -37,7 +47,14 @@ func NewClient() (*Client, error) {
 		return nil, &AuthError{Err: err}
 	}
 
-	return &Client{rest: rest}, nil
+	return &Client{rest: rest, authToken: authToken}, nil
+}
+
+// getGHCLIToken tries to get the auth token from gh CLI
+func getGHCLIToken() (string, error) {
+	// Use go-gh's auth package to get the token
+	token, _ := auth.TokenForHost("github.com")
+	return token, nil
 }
 
 // Get performs a GET request to the GitHub API with retry logic
@@ -191,31 +208,36 @@ func (c *Client) DownloadArtifact(owner, repo string, artifactID int64, filename
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer tempFile.Close()
-	defer os.Remove(tempFile.Name()) // Clean up temp file
+	tempFileName := tempFile.Name()
+	defer os.Remove(tempFileName) // Clean up temp file on error
 
 	// Download the artifact
 	resp, err := c.getRawResponse(path)
 	if err != nil {
+		tempFile.Close()
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		tempFile.Close()
 		return fmt.Errorf("download failed with status: %s", resp.Status)
 	}
 
 	// Copy the response body to temp file
 	_, err = io.Copy(tempFile, resp.Body)
 	if err != nil {
+		tempFile.Close()
 		return fmt.Errorf("failed to download artifact: %w", err)
 	}
 
 	// Close temp file before renaming
-	tempFile.Close()
+	if err := tempFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
 
 	// Move temp file to final destination
-	if err := os.Rename(tempFile.Name(), filename); err != nil {
+	if err := os.Rename(tempFileName, filename); err != nil {
 		return fmt.Errorf("failed to save artifact: %w", err)
 	}
 

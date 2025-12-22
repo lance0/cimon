@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // FetchJobs fetches all jobs for a workflow run.
@@ -98,13 +99,19 @@ func (c *Client) getRawResponse(path string) (*http.Response, error) {
 		return nil, err
 	}
 
-	// Add authentication headers if available
-	if c.rest != nil {
-		// The go-gh client handles auth, but we need to make a raw request
-		// For now, let's try without auth and see if it works
+	// Add authentication header
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	// Use a client with timeout
+	client := &http.Client{
+		Timeout: 60 * time.Second, // 60 second timeout for large file downloads
 	}
 
-	return http.DefaultClient.Do(req)
+	return client.Do(req)
 }
 
 // extractLogsFromZIP extracts and combines all text files from a ZIP archive

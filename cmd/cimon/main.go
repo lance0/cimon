@@ -70,20 +70,20 @@ func run() int {
 			// First create client to get repository info
 			client, clientErr := gh.NewClient()
 			if clientErr != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error: %v\n", clientErr)
 				return 2
 			}
 
 			// Get repository info (should be resolved by now)
 			cwd, cwdErr := os.Getwd()
 			if cwdErr != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error: %v\n", cwdErr)
 				return 2
 			}
 
 			repoInfo, repoErr := git.GetRepoInfo(cwd)
 			if repoErr != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error: %v\n", repoErr)
 				return 2
 			}
 

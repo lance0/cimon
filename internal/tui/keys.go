@@ -102,26 +102,3 @@ func DefaultKeyMap() KeyMap {
 	}
 }
 
-// ShortHelp returns the short help text (shown in footer)
-func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Refresh, k.Watch, k.Open, k.Quit}
-}
-
-// ShortHelpWithEnter returns help text including Enter key for job selection
-func (k KeyMap) ShortHelpWithEnter() []key.Binding {
-	return []key.Binding{k.Refresh, k.Watch, k.Open, k.Enter, k.Quit}
-}
-
-// ShortHelpWithLogs returns help text including enter and logs keys
-func (k KeyMap) ShortHelpWithLogs() []key.Binding {
-	return []key.Binding{k.Refresh, k.Watch, k.Open, k.Enter, k.Logs, k.Quit}
-}
-
-// FullHelp returns the full help text
-func (k KeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Up, k.Down, k.Enter},
-		{k.Refresh, k.Watch, k.Open},
-		{k.Quit, k.Help},
-	}
-}
