@@ -11,6 +11,7 @@ type KeyMap struct {
 	Up      key.Binding
 	Down    key.Binding
 	Enter   key.Binding
+	Logs    key.Binding
 	Help    key.Binding
 }
 
@@ -45,6 +46,10 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("enter"),
 			key.WithHelp("enter", "select"),
 		),
+		Logs: key.NewBinding(
+			key.WithKeys("l"),
+			key.WithHelp("l", "view logs"),
+		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "help"),
@@ -60,6 +65,11 @@ func (k KeyMap) ShortHelp() []key.Binding {
 // ShortHelpWithEnter returns help text including Enter key for job selection
 func (k KeyMap) ShortHelpWithEnter() []key.Binding {
 	return []key.Binding{k.Refresh, k.Watch, k.Open, k.Enter, k.Quit}
+}
+
+// ShortHelpWithLogs returns help text including enter and logs keys
+func (k KeyMap) ShortHelpWithLogs() []key.Binding {
+	return []key.Binding{k.Refresh, k.Watch, k.Open, k.Enter, k.Logs, k.Quit}
 }
 
 // FullHelp returns the full help text

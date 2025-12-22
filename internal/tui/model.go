@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -22,6 +23,7 @@ const (
 	StateWatching
 	StateError
 	StateJobDetails
+	StateLogViewer
 )
 
 // Model is the Bubble Tea model for the TUI
@@ -43,6 +45,13 @@ type Model struct {
 	showingJobDetails bool
 	selectedJob       *gh.Job
 	jobDetailsCursor  int
+
+	// Log viewer state
+	showingLogs     bool
+	logContent      string
+	logScrollOffset int
+	logSearchTerm   string
+	logSearchIndex  int
 
 	// UI state
 	cursor    int
@@ -82,6 +91,11 @@ type JobsLoadedMsg struct {
 // JobDetailsLoadedMsg is sent when job details are loaded
 type JobDetailsLoadedMsg struct {
 	Job *gh.Job
+}
+
+// LogLoadedMsg is sent when job logs are loaded
+type LogLoadedMsg struct {
+	Content string
 }
 
 // ErrMsg is sent when an error occurs
@@ -167,6 +181,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = StateJobDetails
 		return m, nil
 
+	case LogLoadedMsg:
+		m.logContent = msg.Content
+		m.state = StateLogViewer
+		return m, nil
+
 	case TickMsg:
 		if m.watching {
 			return m, m.fetchLatestRun()
@@ -205,13 +224,27 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.openInBrowser()
 
 	case key.Matches(msg, m.keys.Up):
-		if m.cursor > 0 {
-			m.cursor--
+		if m.state == StateLogViewer {
+			// Scroll up in log viewer
+			if m.logScrollOffset > 0 {
+				m.logScrollOffset--
+			}
+		} else {
+			if m.cursor > 0 {
+				m.cursor--
+			}
 		}
 		return m, nil
 
 	case key.Matches(msg, m.keys.Down):
-		if m.showingJobDetails {
+		if m.state == StateLogViewer {
+			// Scroll down in log viewer
+			lines := strings.Split(strings.TrimSuffix(m.logContent, "\n"), "\n")
+			maxScroll := len(lines) - (m.height - 8) // Approximate visible lines
+			if maxScroll > 0 && m.logScrollOffset < maxScroll {
+				m.logScrollOffset++
+			}
+		} else if m.showingJobDetails {
 			if m.selectedJob != nil && m.jobDetailsCursor < len(m.selectedJob.Steps)-1 {
 				m.jobDetailsCursor++
 			}
@@ -235,6 +268,38 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.selectedJob = nil
 			m.jobDetailsCursor = 0
 			m.state = StateReady
+			return m, nil
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Logs):
+		if m.state == StateReady && len(m.jobs) > 0 && m.cursor >= 0 && m.cursor < len(m.jobs) {
+			// View logs for selected job
+			job := m.jobs[m.cursor]
+			m.showingLogs = true
+			m.logScrollOffset = 0
+			m.logSearchTerm = ""
+			m.logSearchIndex = 0
+			return m, m.fetchLogs(job.ID)
+		} else if m.state == StateJobDetails && m.selectedJob != nil {
+			// View logs for selected job in details view
+			m.showingLogs = true
+			m.logScrollOffset = 0
+			m.logSearchTerm = ""
+			m.logSearchIndex = 0
+			return m, m.fetchLogs(m.selectedJob.ID)
+		} else if m.state == StateLogViewer {
+			// Exit log viewer
+			m.showingLogs = false
+			m.logContent = ""
+			m.logScrollOffset = 0
+			m.logSearchTerm = ""
+			m.logSearchIndex = 0
+			if m.selectedJob != nil {
+				m.state = StateJobDetails
+			} else {
+				m.state = StateReady
+			}
 			return m, nil
 		}
 		return m, nil
@@ -275,6 +340,16 @@ func (m Model) fetchJobDetails(jobID int64) tea.Cmd {
 			return ErrMsg{Err: err}
 		}
 		return JobDetailsLoadedMsg{Job: job}
+	}
+}
+
+func (m Model) fetchLogs(jobID int64) tea.Cmd {
+	return func() tea.Msg {
+		logs, err := m.client.FetchJobLogs(m.config.Owner, m.config.Repo, jobID)
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+		return LogLoadedMsg{Content: logs}
 	}
 }
 

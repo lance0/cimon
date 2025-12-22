@@ -17,6 +17,8 @@ func (m Model) View() string {
 		return m.viewError()
 	case StateJobDetails:
 		return m.viewJobDetails()
+	case StateLogViewer:
+		return m.viewLogViewer()
 	default:
 		return m.viewReady()
 	}
@@ -191,12 +193,15 @@ func (m Model) viewFooter() string {
 	b.WriteString("  ")
 
 	var bindings []key.Binding
-	if len(m.jobs) > 0 && !m.showingJobDetails {
-		// Show Enter key when jobs are available and not in details mode
-		bindings = m.keys.ShortHelpWithEnter()
+	if m.state == StateLogViewer {
+		// In log viewer, show navigation and exit options
+		bindings = []key.Binding{m.keys.Up, m.keys.Down, m.keys.Logs, m.keys.Quit}
+	} else if len(m.jobs) > 0 && !m.showingJobDetails {
+		// Show Enter and Logs keys when jobs are available and not in details mode
+		bindings = m.keys.ShortHelpWithLogs()
 	} else if m.showingJobDetails {
-		// Show Enter key to exit details mode
-		bindings = []key.Binding{m.keys.Refresh, m.keys.Open, m.keys.Enter, m.keys.Quit}
+		// Show Enter and Logs keys in job details mode
+		bindings = []key.Binding{m.keys.Refresh, m.keys.Open, m.keys.Logs, m.keys.Enter, m.keys.Quit}
 	} else {
 		bindings = m.keys.ShortHelp()
 	}
@@ -464,6 +469,63 @@ func (m Model) viewJobDetails() string {
 
 				b.WriteString("\n")
 			}
+		}
+	}
+
+	// Footer
+	b.WriteString("\n")
+	b.WriteString(m.viewFooter())
+
+	return b.String()
+}
+
+func (m Model) viewLogViewer() string {
+	var b strings.Builder
+
+	// Header
+	b.WriteString(m.viewHeader())
+	b.WriteString("\n")
+
+	b.WriteString("Job Logs\n\n")
+
+	if m.logContent == "" {
+		b.WriteString("Loading logs...")
+	} else {
+		// Split log content into lines
+		lines := strings.Split(strings.TrimSuffix(m.logContent, "\n"), "\n")
+
+		// Calculate visible area (reserve space for header and footer)
+		maxLines := m.height - 8 // Approximate, adjust as needed
+
+		// Ensure scroll offset is valid
+		if m.logScrollOffset < 0 {
+			m.logScrollOffset = 0
+		}
+		if m.logScrollOffset > len(lines)-maxLines && len(lines) > maxLines {
+			m.logScrollOffset = len(lines) - maxLines
+		}
+
+		// Display visible lines
+		start := m.logScrollOffset
+		end := start + maxLines
+		if end > len(lines) {
+			end = len(lines)
+		}
+
+		for i := start; i < end; i++ {
+			line := lines[i]
+			// Truncate long lines to fit width
+			if len(line) > m.width-4 {
+				line = line[:m.width-7] + "..."
+			}
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+
+		// Show scroll indicator if needed
+		if len(lines) > maxLines {
+			scrollPercent := float64(m.logScrollOffset) / float64(len(lines)-maxLines) * 100
+			b.WriteString(fmt.Sprintf("\n[Line %d/%d - %.0f%%]", m.logScrollOffset+1, len(lines), scrollPercent))
 		}
 	}
 

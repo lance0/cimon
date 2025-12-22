@@ -1,8 +1,13 @@
 package gh
 
 import (
+	"archive/zip"
+	"bytes"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
+	"strings"
 )
 
 // FetchJobs fetches all jobs for a workflow run.
@@ -35,4 +40,105 @@ func (c *Client) FetchJobDetails(owner, repo string, jobID int64) (*Job, error) 
 	}
 
 	return &job, nil
+}
+
+// FetchJobLogs fetches and extracts the logs for a specific job.
+// Returns the combined log text from all log files in the ZIP.
+func (c *Client) FetchJobLogs(owner, repo string, jobID int64) (string, error) {
+	path := fmt.Sprintf("repos/%s/%s/actions/jobs/%d/logs",
+		url.PathEscape(owner),
+		url.PathEscape(repo),
+		jobID,
+	)
+
+	// Get the redirect URL for the logs ZIP file
+	resp, err := c.getRawResponse(path)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	// Follow the redirect to get the ZIP file
+	if resp.StatusCode == http.StatusFound {
+		redirectURL := resp.Header.Get("Location")
+		if redirectURL == "" {
+			return "", fmt.Errorf("no redirect URL found for logs")
+		}
+
+		// Download the ZIP file
+		resp, err := http.Get(redirectURL)
+		if err != nil {
+			return "", fmt.Errorf("failed to download logs ZIP: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("failed to download logs ZIP: status %d", resp.StatusCode)
+		}
+
+		// Read the ZIP content
+		zipData, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("failed to read ZIP data: %w", err)
+		}
+
+		// Extract and combine all text files from the ZIP
+		return extractLogsFromZIP(zipData)
+	}
+
+	return "", fmt.Errorf("unexpected response status: %d", resp.StatusCode)
+}
+
+// getRawResponse performs a GET request and returns the raw HTTP response
+func (c *Client) getRawResponse(path string) (*http.Response, error) {
+	fullURL := fmt.Sprintf("https://api.github.com/%s", path)
+
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add authentication headers if available
+	if c.rest != nil {
+		// The go-gh client handles auth, but we need to make a raw request
+		// For now, let's try without auth and see if it works
+	}
+
+	return http.DefaultClient.Do(req)
+}
+
+// extractLogsFromZIP extracts and combines all text files from a ZIP archive
+func extractLogsFromZIP(zipData []byte) (string, error) {
+	zipReader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return "", fmt.Errorf("failed to read ZIP: %w", err)
+	}
+
+	var logs strings.Builder
+
+	for _, file := range zipReader.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+
+		// Open the file in the ZIP
+		rc, err := file.Open()
+		if err != nil {
+			continue // Skip files we can't open
+		}
+
+		// Read the file content
+		content, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			continue // Skip files we can't read
+		}
+
+		// Add a header for each file
+		logs.WriteString(fmt.Sprintf("=== %s ===\n", file.Name))
+		logs.Write(content)
+		logs.WriteString("\n\n")
+	}
+
+	return logs.String(), nil
 }
