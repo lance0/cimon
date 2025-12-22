@@ -93,6 +93,8 @@ cimon --repo owner/name --branch main
 -r, --repo string     Repository in owner/name format
 -w, --watch           Watch mode - poll until completion
 -p, --poll duration   Poll interval for watch mode (default 5s)
+    --notify          Desktop notification on completion (watch mode)
+    --hook string     Run script on completion with env vars (watch mode)
     --json            JSON output for scripting
     --no-color        Disable color output
     --plain           Plain text output (no TUI)

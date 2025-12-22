@@ -285,6 +285,8 @@ FLAGS:
     -b, --branch string   Branch name
     -w, --watch           Watch mode - poll until completion
     -p, --poll duration   Poll interval for watch mode (default 5s)
+        --notify          Desktop notification on completion (watch mode)
+        --hook string     Run script on completion with env vars (watch mode)
         --no-color        Disable color output
         --plain           Plain text output (no TUI)
         --json            JSON output for scripting
@@ -293,9 +295,19 @@ FLAGS:
 EXAMPLES:
     cimon                           # Monitor current repo
     cimon --plain                   # Plain text output
+    cimon -w --notify               # Watch with desktop notification
+    cimon -w --hook ./my-script.sh  # Watch with custom hook
     cimon retry                     # Rerun latest workflow
     cimon cancel                    # Cancel running workflow
     cimon dispatch deploy.yml       # Trigger workflow dispatch
+
+HOOK ENVIRONMENT VARIABLES:
+    CIMON_WORKFLOW_NAME   Workflow name (e.g., "CI")
+    CIMON_RUN_NUMBER      Run number (e.g., "123")
+    CIMON_CONCLUSION      Conclusion (success, failure, cancelled)
+    CIMON_REPO            Repository (owner/repo)
+    CIMON_BRANCH          Branch name
+    CIMON_HTML_URL        URL to the run
 
 For more information, see: https://github.com/lance0/cimon
 `)

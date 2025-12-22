@@ -54,12 +54,12 @@
 - [x] Log comparison between runs (`c` key)
 - [x] Follow specific job logs in multi-job workflows (`m` key)
 
-## v0.7 - Notifications & Automation
+## v0.7 - Notifications & Hooks
 
-- [ ] Desktop notifications on completion
+- [x] Desktop notifications on completion (`--notify` flag)
+- [x] Custom completion hooks/scripts (`--hook` flag)
 - [ ] Webhook support for external integrations
 - [ ] Slack/Discord integration
-- [ ] Custom completion hooks/scripts
 - [ ] Email notifications
 
 ## v0.8 - Multi-Repo & Enterprise

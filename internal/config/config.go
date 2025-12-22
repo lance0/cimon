@@ -25,6 +25,8 @@ type Config struct {
 	Plain   bool
 	Json    bool
 	Version bool
+	Notify  bool   // v0.7 - Enable desktop notifications on completion
+	Hook    string // v0.7 - Path to hook script to execute on completion
 }
 
 // Default values
@@ -59,6 +61,8 @@ func Parse(args []string) (*Config, error) {
 	fs.BoolVar(&cfg.Plain, "plain", false, "Plain text output (no TUI)")
 	fs.BoolVar(&cfg.Json, "json", false, "JSON output for scripting")
 	fs.BoolVarP(&cfg.Version, "version", "v", false, "Show version")
+	fs.BoolVar(&cfg.Notify, "notify", false, "Show desktop notification on completion (watch mode)")
+	fs.StringVar(&cfg.Hook, "hook", "", "Run script on completion with env vars (watch mode)")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err

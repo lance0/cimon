@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lance0/cimon/internal/config"
 	"github.com/lance0/cimon/internal/gh"
+	"github.com/lance0/cimon/internal/notify"
 )
 
 // State represents the current state of the TUI
@@ -117,9 +118,10 @@ type Model struct {
 	selectedArtifactIndex int
 
 	// UI state
-	cursor    int
-	watching  bool
-	lastFetch time.Time
+	cursor           int
+	watching         bool
+	notificationSent bool // v0.7: Prevent duplicate notifications on completion
+	lastFetch        time.Time
 
 	// Error
 	err error
@@ -314,10 +316,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.state = StateReady
 		}
-		// If watching and run is complete, stop watching
+		// If watching and run is complete, stop watching and trigger notifications
 		if m.watching && m.run != nil && m.run.IsCompleted() {
 			m.watching = false
 			m.state = StateReady
+			// v0.7: Send notification and execute hook (only once per completion)
+			if !m.notificationSent {
+				m.notificationSent = true
+				m.triggerNotifications()
+			}
 		}
 		// Set exit code based on run status
 		m.updateExitCode()
@@ -489,6 +496,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Watch):
 		m.watching = !m.watching
 		if m.watching {
+			m.notificationSent = false // v0.7: Reset for new watch session
 			m.state = StateWatching
 			return m, m.scheduleNextPoll()
 		}
@@ -1411,4 +1419,67 @@ var openURL = func(url string) {
 	// Detach from terminal
 	cmd.Env = os.Environ()
 	_ = cmd.Start()
+}
+
+// triggerNotifications sends desktop notifications and executes hooks (v0.7)
+func (m *Model) triggerNotifications() {
+	if m.run == nil {
+		return
+	}
+
+	conclusion := ""
+	if m.run.Conclusion != nil {
+		conclusion = *m.run.Conclusion
+	}
+
+	// Count job successes and failures
+	successCount := 0
+	failureCount := 0
+	for _, job := range m.jobs {
+		if job.Conclusion != nil {
+			switch *job.Conclusion {
+			case gh.ConclusionSuccess:
+				successCount++
+			case gh.ConclusionFailure:
+				failureCount++
+			}
+		}
+	}
+
+	// Build notification data
+	notifyData := notify.NotificationData{
+		WorkflowName: m.run.Name,
+		RunNumber:    m.run.RunNumber,
+		Conclusion:   conclusion,
+		Repo:         m.config.RepoSlug(),
+		Branch:       m.config.Branch,
+		HTMLURL:      m.run.HTMLURL,
+	}
+
+	// Build hook data
+	hookData := notify.HookData{
+		WorkflowName: m.run.Name,
+		RunNumber:    m.run.RunNumber,
+		RunID:        m.run.ID,
+		Status:       m.run.Status,
+		Conclusion:   conclusion,
+		Repo:         m.config.RepoSlug(),
+		Branch:       m.config.Branch,
+		Event:        m.run.Event,
+		Actor:        m.run.ActorLogin(),
+		HTMLURL:      m.run.HTMLURL,
+		JobCount:     len(m.jobs),
+		SuccessCount: successCount,
+		FailureCount: failureCount,
+	}
+
+	// Send desktop notification if enabled
+	if m.config.Notify {
+		notify.SendDesktopNotification(notifyData)
+	}
+
+	// Execute hook if configured
+	if m.config.Hook != "" {
+		notify.ExecuteHook(m.config.Hook, hookData)
+	}
 }

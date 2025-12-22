@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### v0.7 Notifications & Hooks
+- **Desktop Notifications**: OS-native notifications when workflow completes in watch mode (`--notify` flag)
+- **Custom Hooks**: Execute user scripts on completion with environment variables (`--hook` flag)
+- **Cross-Platform Support**: Linux (notify-send), macOS (osascript), Windows (PowerShell)
+- **Hook Environment Variables**: Pass workflow data to scripts via CIMON_* environment variables
+
 #### v0.6 Advanced Logs
 - **Syntax Highlighting**: Color-coded log lines for errors (red), warnings (yellow), commands (cyan), and groups (bold) (`H` to toggle)
 - **Log Export**: Save current log view to timestamped file with metadata header (`s` key)
