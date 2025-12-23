@@ -2,6 +2,7 @@ package gh
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -225,4 +226,168 @@ func TestWorkflowRunStatus(t *testing.T) {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+func TestSourcedRunRepoSlug(t *testing.T) {
+	sr := SourcedRun{Owner: "myorg", Repo: "myrepo"}
+	if got := sr.RepoSlug(); got != "myorg/myrepo" {
+		t.Errorf("RepoSlug() = %q, want %q", got, "myorg/myrepo")
+	}
+}
+
+func TestJobIsCompleted(t *testing.T) {
+	tests := []struct {
+		status string
+		want   bool
+	}{
+		{StatusQueued, false},
+		{StatusInProgress, false},
+		{StatusCompleted, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.status, func(t *testing.T) {
+			job := Job{Status: tt.status}
+			if got := job.IsCompleted(); got != tt.want {
+				t.Errorf("IsCompleted() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestJobDurationNilTimes(t *testing.T) {
+	job := Job{}
+	if got := job.Duration(); got != 0 {
+		t.Errorf("Duration() with nil times = %v, want 0", got)
+	}
+
+	now := time.Now()
+	job.StartedAt = &now
+	if got := job.Duration(); got != 0 {
+		t.Errorf("Duration() with nil CompletedAt = %v, want 0", got)
+	}
+}
+
+func TestActorLoginNil(t *testing.T) {
+	run := WorkflowRun{Actor: nil}
+	if got := run.ActorLogin(); got != "" {
+		t.Errorf("ActorLogin() with nil actor = %q, want empty", got)
+	}
+}
+
+func TestParsedLogsGetStep(t *testing.T) {
+	pl := &ParsedLogs{
+		Steps: []StepLog{
+			{Number: 1, Name: "Checkout", Content: "checkout logs"},
+			{Number: 2, Name: "Build", Content: "build logs"},
+			{Number: 3, Name: "Test", Content: "test logs"},
+		},
+	}
+
+	if got := pl.GetStep(2); got != "build logs" {
+		t.Errorf("GetStep(2) = %q, want %q", got, "build logs")
+	}
+
+	if got := pl.GetStep(99); got != "" {
+		t.Errorf("GetStep(99) = %q, want empty", got)
+	}
+}
+
+func TestParsedLogsGetStepByName(t *testing.T) {
+	pl := &ParsedLogs{
+		Steps: []StepLog{
+			{Number: 1, Name: "Checkout", Content: "checkout logs"},
+			{Number: 2, Name: "Build", Content: "build logs"},
+		},
+	}
+
+	if got := pl.GetStepByName("Build"); got != "build logs" {
+		t.Errorf("GetStepByName(Build) = %q, want %q", got, "build logs")
+	}
+
+	if got := pl.GetStepByName("NotFound"); got != "" {
+		t.Errorf("GetStepByName(NotFound) = %q, want empty", got)
+	}
+}
+
+func TestParsedLogsFilteredContent(t *testing.T) {
+	pl := &ParsedLogs{
+		Steps: []StepLog{
+			{Number: 1, Name: "Checkout", Content: "checkout logs"},
+			{Number: 2, Name: "Build", Content: "build logs"},
+			{Number: 3, Name: "Test", Content: "test logs"},
+		},
+		Combined: "all logs combined",
+	}
+
+	// Empty filter returns combined
+	if got := pl.FilteredContent(nil); got != "all logs combined" {
+		t.Errorf("FilteredContent(nil) = %q, want combined", got)
+	}
+
+	if got := pl.FilteredContent([]int{}); got != "all logs combined" {
+		t.Errorf("FilteredContent([]) = %q, want combined", got)
+	}
+
+	// Filter specific steps
+	filtered := pl.FilteredContent([]int{1, 3})
+	if !strings.Contains(filtered, "checkout logs") {
+		t.Error("FilteredContent([1,3]) should contain checkout logs")
+	}
+	if strings.Contains(filtered, "build logs") {
+		t.Error("FilteredContent([1,3]) should not contain build logs")
+	}
+	if !strings.Contains(filtered, "test logs") {
+		t.Error("FilteredContent([1,3]) should contain test logs")
+	}
+}
+
+func TestArtifactParsing(t *testing.T) {
+	jsonData := `{
+		"id": 123456,
+		"name": "build-artifacts",
+		"size_in_bytes": 1048576,
+		"expired": false
+	}`
+
+	var artifact Artifact
+	if err := json.Unmarshal([]byte(jsonData), &artifact); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if artifact.ID != 123456 {
+		t.Errorf("ID = %d, want 123456", artifact.ID)
+	}
+	if artifact.Name != "build-artifacts" {
+		t.Errorf("Name = %q, want %q", artifact.Name, "build-artifacts")
+	}
+	if artifact.SizeInBytes != 1048576 {
+		t.Errorf("SizeInBytes = %d, want 1048576", artifact.SizeInBytes)
+	}
+	if artifact.Expired {
+		t.Error("Expired = true, want false")
+	}
+}
+
+func TestRepositoryParsing(t *testing.T) {
+	jsonData := `{
+		"name": "myrepo",
+		"full_name": "owner/myrepo",
+		"default_branch": "main"
+	}`
+
+	var repo Repository
+	if err := json.Unmarshal([]byte(jsonData), &repo); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if repo.Name != "myrepo" {
+		t.Errorf("Name = %q, want %q", repo.Name, "myrepo")
+	}
+	if repo.FullName != "owner/myrepo" {
+		t.Errorf("FullName = %q, want %q", repo.FullName, "owner/myrepo")
+	}
+	if repo.DefaultBranch != "main" {
+		t.Errorf("DefaultBranch = %q, want %q", repo.DefaultBranch, "main")
+	}
 }
