@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2025-12-23
+
+### Added
+- **Troubleshooting Guide**: Added troubleshooting section to README with common issues and fixes
+- **CONTRIBUTING Guide**: Added contributor documentation
+
+### Improved
+- **Test Coverage**: Significantly improved test coverage across packages
+  - gh: 24.1% → 32.8% (error handling, HTTP utilities, retry logic)
+  - notify: 46.9% → 79.2% (desktop notifications, hook execution)
+  - Added comprehensive tests for config parsing, error types, and retries
+
+### Fixed
+- **Job Details Navigation**: Up arrow key now works correctly in Job Details view
+- **Linter Issues**: Fixed all golangci-lint warnings (unused code, errcheck, gosimple)
+
+## [0.8.0] - 2025-12-22
+
 ### Added
 
 #### v0.8 Multi-Repo Dashboard

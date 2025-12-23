@@ -168,6 +168,25 @@ cimon --json
 cimon -r octocat/hello-world -b main
 ```
 
+## Troubleshooting
+
+### Authentication Issues
+- **"not authenticated to GitHub"**: Run `gh auth login` or set `GITHUB_TOKEN`
+- **"403 Forbidden"**: Check repository access permissions
+- **"rate limit exceeded"**: Wait a few minutes or authenticate to increase limits
+
+### Repository Detection
+- **"not a git repository"**: Run cimon from inside a git repo, or use `--repo owner/name`
+- **"detached HEAD"**: Use `--branch` to specify a branch explicitly
+
+### Display Issues
+- **Colors not showing**: Ensure terminal supports ANSI colors; try without `--no-color`
+- **UI looks broken**: Try a different terminal emulator or resize window
+
+### Common Fixes
+- Update to latest version: `go install github.com/lance0/cimon/cmd/cimon@latest`
+- Check GitHub status: https://www.githubstatus.com/
+
 ## License
 
 MIT

@@ -142,3 +142,113 @@ func TestParseWithReposFlag(t *testing.T) {
 		t.Error("Parse() IsMultiRepo() = false, want true")
 	}
 }
+
+func TestConfigRepoSlug(t *testing.T) {
+	cfg := Config{Owner: "myowner", Repo: "myrepo"}
+	if got := cfg.RepoSlug(); got != "myowner/myrepo" {
+		t.Errorf("RepoSlug() = %q, want %q", got, "myowner/myrepo")
+	}
+}
+
+func TestDefaultConfigPath(t *testing.T) {
+	path := DefaultConfigPath()
+	if path != "cimon.yml" {
+		t.Errorf("DefaultConfigPath() = %q, want %q", path, "cimon.yml")
+	}
+}
+
+func TestParseFlags(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		check   func(*Config) bool
+		wantErr bool
+	}{
+		{
+			name: "version flag",
+			args: []string{"--version"},
+			check: func(c *Config) bool {
+				return c.Version
+			},
+		},
+		{
+			name: "watch flag",
+			args: []string{"--watch"},
+			check: func(c *Config) bool {
+				return c.Watch
+			},
+		},
+		{
+			name: "plain flag",
+			args: []string{"--plain"},
+			check: func(c *Config) bool {
+				return c.Plain
+			},
+		},
+		{
+			name: "json flag",
+			args: []string{"--json"},
+			check: func(c *Config) bool {
+				return c.Json
+			},
+		},
+		{
+			name: "no-color flag",
+			args: []string{"--no-color"},
+			check: func(c *Config) bool {
+				return c.NoColor
+			},
+		},
+		{
+			name: "notify flag",
+			args: []string{"--notify"},
+			check: func(c *Config) bool {
+				return c.Notify
+			},
+		},
+		{
+			name: "branch flag",
+			args: []string{"--branch", "develop"},
+			check: func(c *Config) bool {
+				return c.Branch == "develop"
+			},
+		},
+		{
+			name: "repo flag",
+			args: []string{"--repo", "owner/repo"},
+			check: func(c *Config) bool {
+				return c.Owner == "owner" && c.Repo == "repo"
+			},
+		},
+		{
+			name:    "invalid repo format",
+			args:    []string{"--repo", "invalid"},
+			wantErr: true,
+		},
+		{
+			name: "hook flag",
+			args: []string{"--hook", "/path/to/hook.sh"},
+			check: func(c *Config) bool {
+				return c.Hook == "/path/to/hook.sh"
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := Parse(tt.args)
+			if (err != nil) != tt.wantErr {
+				if err != ErrHelp {
+					t.Errorf("Parse() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+			if tt.wantErr {
+				return
+			}
+			if tt.check != nil && !tt.check(cfg) {
+				t.Errorf("Parse() check failed for args %v", tt.args)
+			}
+		})
+	}
+}

@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"runtime"
 	"testing"
 )
 
@@ -204,5 +205,132 @@ func TestHookDataToEnvVars(t *testing.T) {
 		} else if value != expectedValue {
 			t.Errorf("ToEnvVars() %s = %q, want %q", key, value, expectedValue)
 		}
+	}
+}
+
+func TestIsNotificationAvailable(t *testing.T) {
+	// This function should return a boolean without panicking
+	result := IsNotificationAvailable()
+
+	// On macOS and Windows, it should always return true
+	switch runtime.GOOS {
+	case "darwin", "windows":
+		if !result {
+			t.Errorf("IsNotificationAvailable() = false on %s, want true", runtime.GOOS)
+		}
+	case "linux":
+		// On Linux, result depends on notify-send being installed
+		// Just verify it doesn't panic and returns a bool
+		_ = result
+	default:
+		// Unknown platforms should return false
+		if result {
+			t.Errorf("IsNotificationAvailable() = true on unknown platform %s", runtime.GOOS)
+		}
+	}
+}
+
+func TestBuildMacOSNotification(t *testing.T) {
+	cmd := buildMacOSNotification("Test Title", "Test Body")
+	if cmd == nil {
+		t.Fatal("buildMacOSNotification() returned nil")
+	}
+
+	// Verify command is osascript
+	if cmd.Path == "" {
+		t.Error("buildMacOSNotification() command has empty path")
+	}
+
+	// Verify args contain the title and body
+	args := cmd.Args
+	if len(args) < 2 {
+		t.Errorf("buildMacOSNotification() has %d args, want at least 2", len(args))
+	}
+}
+
+func TestBuildWindowsNotification(t *testing.T) {
+	cmd := buildWindowsNotification("Test Title", "Test Body")
+	if cmd == nil {
+		t.Fatal("buildWindowsNotification() returned nil")
+	}
+
+	// Verify command has arguments
+	if len(cmd.Args) == 0 {
+		t.Error("buildWindowsNotification() command has no args")
+	}
+}
+
+func TestBuildLinuxNotification(t *testing.T) {
+	// This may return nil if notify-send is not installed
+	cmd := buildLinuxNotification("Test Title", "Test Body", "normal")
+
+	// If notify-send is available, verify command structure
+	if cmd != nil {
+		if len(cmd.Args) < 4 {
+			t.Errorf("buildLinuxNotification() has %d args, want at least 4", len(cmd.Args))
+		}
+	}
+}
+
+func TestSendDesktopNotification_UnsupportedPlatform(t *testing.T) {
+	// We can't easily test unsupported platforms, but we can test the data path
+	data := NotificationData{
+		WorkflowName: "Test",
+		RunNumber:    1,
+		Conclusion:   "success",
+		Repo:         "owner/repo",
+		Branch:       "main",
+	}
+
+	// Just verify it doesn't panic
+	result := SendDesktopNotification(data)
+	// Result depends on platform and available tools
+	_ = result
+}
+
+func TestNotificationDataFields(t *testing.T) {
+	data := NotificationData{
+		WorkflowName: "CI Build",
+		RunNumber:    42,
+		Conclusion:   "failure",
+		Repo:         "owner/repo",
+		Branch:       "feature-branch",
+		HTMLURL:      "https://github.com/owner/repo/actions/runs/123",
+	}
+
+	if data.WorkflowName != "CI Build" {
+		t.Error("WorkflowName not set correctly")
+	}
+	if data.RunNumber != 42 {
+		t.Error("RunNumber not set correctly")
+	}
+	if data.Conclusion != "failure" {
+		t.Error("Conclusion not set correctly")
+	}
+	if data.Repo != "owner/repo" {
+		t.Error("Repo not set correctly")
+	}
+	if data.Branch != "feature-branch" {
+		t.Error("Branch not set correctly")
+	}
+	if data.HTMLURL != "https://github.com/owner/repo/actions/runs/123" {
+		t.Error("HTMLURL not set correctly")
+	}
+}
+
+func TestNotifyResultFields(t *testing.T) {
+	// Test successful result
+	successResult := NotifyResult{Sent: true, Error: nil}
+	if !successResult.Sent {
+		t.Error("NotifyResult.Sent should be true")
+	}
+	if successResult.Error != nil {
+		t.Error("NotifyResult.Error should be nil")
+	}
+
+	// Test failed result
+	failResult := NotifyResult{Sent: false, Error: nil}
+	if failResult.Sent {
+		t.Error("NotifyResult.Sent should be false")
 	}
 }
